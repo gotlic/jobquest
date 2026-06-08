@@ -1,0 +1,17 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/activities/[id]/route": "app/api/activities/[id]/route.js",
+  "/api/analyze/route": "app/api/analyze/route.js",
+  "/api/cover-letters/[id]/route": "app/api/cover-letters/[id]/route.js",
+  "/api/cover-letters/route": "app/api/cover-letters/route.js",
+  "/api/cv-categories/route": "app/api/cv-categories/route.js",
+  "/api/cvs/[id]/route": "app/api/cvs/[id]/route.js",
+  "/api/cvs/route": "app/api/cvs/route.js",
+  "/api/jobs/[id]/route": "app/api/jobs/[id]/route.js",
+  "/api/jobs/route": "app/api/jobs/route.js",
+  "/api/uploads/[filename]/route": "app/api/uploads/[filename]/route.js",
+  "/candidat/page": "app/candidat/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js"
+}

@@ -1,0 +1,3 @@
+{
+  "/api/cover-letters/[id]/route": "app/api/cover-letters/[id]/route.js"
+}

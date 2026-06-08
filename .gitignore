@@ -13,8 +13,8 @@
 # testing
 /coverage
 
-# next.js
-/.next/
+# next.js (production build committed; dev cache excluded)
+/.next/dev/
 /out/
 
 # production

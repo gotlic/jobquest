@@ -1,0 +1,17 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/activities/[id]/route": "/api/activities/[id]",
+  "/api/analyze/route": "/api/analyze",
+  "/api/cover-letters/[id]/route": "/api/cover-letters/[id]",
+  "/api/cover-letters/route": "/api/cover-letters",
+  "/api/cv-categories/route": "/api/cv-categories",
+  "/api/cvs/[id]/route": "/api/cvs/[id]",
+  "/api/cvs/route": "/api/cvs",
+  "/api/jobs/[id]/route": "/api/jobs/[id]",
+  "/api/jobs/route": "/api/jobs",
+  "/api/uploads/[filename]/route": "/api/uploads/[filename]",
+  "/candidat/page": "/candidat",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/"
+}
