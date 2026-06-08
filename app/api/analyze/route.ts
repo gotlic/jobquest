@@ -43,8 +43,7 @@ JSON attendu:
   "summary": "Résumé du poste en 30-50 mots maximum, percutant et informatif",
   "contact_name": "Prénom Nom du recruteur si mentionné (ou null)",
   "contact_email": "Email recruteur si mentionné (ou null)",
-  "contact_linkedin": "Profil LinkedIn recruteur si mentionné (ou null)",
-  "network_connection": "Suggestion de lien réseau à activer ou personne à contacter pour ce poste (ou null)"
+  "contact_linkedin": "Profil LinkedIn recruteur si mentionné (ou null)"
 }`,
       },
     ],
