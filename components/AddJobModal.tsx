@@ -36,7 +36,7 @@ export default function AddJobModal({
   const [url, setUrl] = useState(editJob?.url ?? '');
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [analyzed, setAnalyzed] = useState(false);
+  const [analyzed, setAnalyzed] = useState<false | 'fresh' | 'cached'>(false);
   const [error, setError] = useState('');
   const [duplicate, setDuplicate] = useState<{ job: Record<string, unknown>; score: number; reason: string } | null>(null);
   const [data, setData] = useState<JobData>(
@@ -59,6 +59,7 @@ export default function AddJobModal({
       });
       const result = await res.json();
       if (result.error) { setError(result.error); return; }
+      setAnalyzed(result._cached ? 'cached' : 'fresh');
       // Whitelist des champs autorisés depuis l'IA (network_connection est exclu)
       setData(prev => ({
         ...prev,
@@ -185,8 +186,11 @@ export default function AddJobModal({
                 {analyzing ? 'Analyse...' : 'Analyser'}
               </button>
             </div>
-            {analyzed && (
-              <p className="text-xs text-violet-600 mt-2 font-medium">✅ Offre analysée ! Vérifiez et complétez ci-dessous.</p>
+            {analyzed === 'fresh' && (
+              <p className="text-xs text-violet-600 mt-2 font-medium">✅ Offre analysée par l'IA ! Vérifiez et complétez ci-dessous.</p>
+            )}
+            {analyzed === 'cached' && (
+              <p className="text-xs text-emerald-600 mt-2 font-medium">⚡ Résultat depuis le cache — aucun crédit utilisé.</p>
             )}
           </div>
 
