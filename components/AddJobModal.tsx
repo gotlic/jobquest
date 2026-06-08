@@ -38,6 +38,7 @@ export default function AddJobModal({
   const [saving, setSaving] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState('');
+  const [duplicate, setDuplicate] = useState<{ job: Record<string, unknown>; score: number } | null>(null);
   const [data, setData] = useState<JobData>(
     isEdit ? { ...editJob } : {
       url: '', title: '', company: '', location: '', remote: '', start_date: '',
@@ -67,13 +68,41 @@ export default function AddJobModal({
     }
   }
 
-  async function handleSave() {
+  async function handleSave(force = false) {
     if (!data.title || !data.company) { setError('Titre et entreprise requis'); return; }
     setSaving(true);
+    setDuplicate(null);
     if (isEdit && onUpdate && editJob?.id) {
       await onUpdate(editJob.id, { ...data, url });
     } else if (onSave) {
-      await onSave({ ...data, url });
+      await onSave({ ...data, url, ...(force ? { _force: true } : {}) } as JobData & { _force?: boolean });
+    }
+    setSaving(false);
+  }
+
+  async function checkDuplicateThenSave() {
+    // Le parent appelle l'API — si 409, onSave lance l'exception et on gère ici
+    // On passe par une fetch directe pour intercepter le 409 avant onSave
+    if (!data.title || !data.company) { setError('Titre et entreprise requis'); return; }
+    if (isEdit) { await handleSave(); return; }
+    setSaving(true);
+    setDuplicate(null);
+    try {
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...data, url }),
+      });
+      if (res.status === 409) {
+        const body = await res.json();
+        setDuplicate(body);
+        setSaving(false);
+        return;
+      }
+      // Succès → on appelle onSave avec _force pour éviter re-check
+      await onSave?.({ ...data, url, _force: true } as JobData & { _force?: boolean });
+    } catch {
+      setError('Erreur réseau');
     }
     setSaving(false);
   }
@@ -237,6 +266,33 @@ export default function AddJobModal({
             </div>
           </div>
 
+          {/* Alerte doublon */}
+          {duplicate && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-bold text-amber-800 flex items-center gap-2">
+                ⚠️ Cette offre ressemble à une existante ({duplicate.score}% de similarité)
+              </p>
+              <div className="bg-white rounded-xl p-3 text-sm text-gray-700 border border-amber-100">
+                <p className="font-semibold">{duplicate.job.title as string}</p>
+                <p className="text-gray-500">{duplicate.job.company as string}{duplicate.job.location ? ` — ${duplicate.job.location}` : ''}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDuplicate(null)}
+                  className="flex-1 py-2 border border-amber-300 text-amber-700 rounded-xl text-xs font-semibold hover:bg-amber-100 transition-colors"
+                >
+                  ← Modifier ma saisie
+                </button>
+                <button
+                  onClick={() => handleSave(true)}
+                  className="flex-1 py-2 bg-amber-500 text-white rounded-xl text-xs font-semibold hover:bg-amber-600 transition-colors"
+                >
+                  Ajouter quand même
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
@@ -245,7 +301,7 @@ export default function AddJobModal({
               Annuler
             </button>
             <button
-              onClick={handleSave}
+              onClick={() => isEdit ? handleSave() : checkDuplicateThenSave()}
               disabled={saving || !data.title || !data.company}
               className="flex-1 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-all shadow-lg shadow-violet-200"
             >
