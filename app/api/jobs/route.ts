@@ -14,7 +14,12 @@ export async function POST(req: NextRequest) {
 
   // Détection de doublon (sauf si l'utilisateur force l'ajout)
   if (!body._force) {
-    const candidate: JobLike = { title: body.title ?? '', company: body.company ?? '', location: body.location };
+    const candidate: JobLike = {
+      title: body.title ?? '',
+      company: body.company ?? '',
+      location: body.location,
+      url: body.url,
+    };
     const existing = db.prepare('SELECT * FROM jobs WHERE status != ?').all('archived') as JobLike[];
     const best = existing
       .map(j => ({ job: j, ...isDuplicate(candidate, j) }))
@@ -23,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     if (best) {
       return NextResponse.json(
-        { duplicate: best.job, score: Math.round(best.score * 100) },
+        { duplicate: best.job, score: Math.round(best.score * 100), reason: best.reason },
         { status: 409 }
       );
     }

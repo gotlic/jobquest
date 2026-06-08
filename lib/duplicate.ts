@@ -1,6 +1,6 @@
 /**
  * Détection intelligente de doublons entre offres d'emploi.
- * Critères : entreprise + intitulé du poste + lieu (optionnel)
+ * Critères : URL, entreprise + intitulé du poste + lieu (optionnel)
  */
 
 /** Normalise une chaîne : minuscules, sans accents, sans ponctuation, espaces collapsés */
@@ -8,8 +8,8 @@ function normalize(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // supprime les accents
-    .replace(/[^a-z0-9\s]/g, ' ')   // ponctuation → espace
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -18,7 +18,7 @@ function normalize(s: string): string {
 const STOP_WORDS = new Set([
   'de', 'du', 'des', 'le', 'la', 'les', 'un', 'une', 'et', 'en',
   'the', 'a', 'an', 'of', 'for', 'in', 'at', 'to', 'and', 'or',
-  'h', 'f', 'hf', 'h/f', 'senior', 'junior', 'stage', 'alternance',
+  'h', 'f', 'hf', 'senior', 'junior', 'stage', 'alternance',
   'cdi', 'cdd', 'freelance',
 ]);
 
@@ -38,37 +38,75 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return intersection / union;
 }
 
+/**
+ * Normalise une URL pour comparaison :
+ * - minuscules
+ * - supprime le protocole
+ * - supprime les query params et fragments
+ * - supprime le trailing slash
+ */
+function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url.trim());
+    return (u.hostname + u.pathname).toLowerCase().replace(/\/$/, '');
+  } catch {
+    return url.toLowerCase().trim();
+  }
+}
+
+export type DuplicateReason = 'url' | 'content';
+
 export type DuplicateResult = {
   isDuplicate: boolean;
-  score: number; // 0–1
+  score: number;      // 0–1
+  reason: DuplicateReason;
 };
 
 export type JobLike = {
   title: string;
   company: string;
   location?: string | null;
+  url?: string | null;
 };
 
 /**
  * Retourne true si `candidate` ressemble à `existing`.
- * Seuil : entreprise très similaire ET titre similaire à 50%+
+ * Vérifie d'abord l'URL, puis le contenu (poste + entreprise + lieu).
  */
 export function isDuplicate(candidate: JobLike, existing: JobLike): DuplicateResult {
+  // 1. Correspondance URL (prioritaire)
+  if (candidate.url && existing.url) {
+    const urlA = normalizeUrl(candidate.url);
+    const urlB = normalizeUrl(existing.url);
+    if (urlA === urlB) {
+      return { isDuplicate: true, score: 1, reason: 'url' };
+    }
+    // URL très similaire : même domaine + chemin proche (ex. paramètres différents)
+    try {
+      const hostA = new URL(candidate.url).hostname;
+      const hostB = new URL(existing.url).hostname;
+      if (hostA === hostB) {
+        const pathScore = jaccard(tokens(urlA), tokens(urlB));
+        if (pathScore >= 0.8) {
+          return { isDuplicate: true, score: pathScore, reason: 'url' };
+        }
+      }
+    } catch { /* URL malformée, on ignore */ }
+  }
+
+  // 2. Correspondance sur le contenu
   const companyA = tokens(candidate.company);
   const companyB = tokens(existing.company);
   const companyScore = jaccard(companyA, companyB);
 
-  // Si l'entreprise ne correspond pas du tout, pas un doublon
-  if (companyScore < 0.5) return { isDuplicate: false, score: 0 };
+  if (companyScore < 0.5) return { isDuplicate: false, score: 0, reason: 'content' };
 
   const titleA = tokens(candidate.title);
   const titleB = tokens(existing.title);
   const titleScore = jaccard(titleA, titleB);
 
-  // Score combiné pondéré (entreprise 40%, titre 60%)
   const combined = companyScore * 0.4 + titleScore * 0.6;
 
-  // Bonus si même lieu (ou aucun lieu des deux côtés)
   let locationBonus = 0;
   if (candidate.location && existing.location) {
     const locScore = jaccard(tokens(candidate.location), tokens(existing.location));
@@ -80,5 +118,6 @@ export function isDuplicate(candidate: JobLike, existing: JobLike): DuplicateRes
   return {
     isDuplicate: finalScore >= 0.55,
     score: finalScore,
+    reason: 'content',
   };
 }

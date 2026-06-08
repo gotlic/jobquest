@@ -38,7 +38,7 @@ export default function AddJobModal({
   const [saving, setSaving] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState('');
-  const [duplicate, setDuplicate] = useState<{ job: Record<string, unknown>; score: number } | null>(null);
+  const [duplicate, setDuplicate] = useState<{ job: Record<string, unknown>; score: number; reason: string } | null>(null);
   const [data, setData] = useState<JobData>(
     isEdit ? { ...editJob } : {
       url: '', title: '', company: '', location: '', remote: '', start_date: '',
@@ -95,7 +95,7 @@ export default function AddJobModal({
       });
       if (res.status === 409) {
         const body = await res.json();
-        setDuplicate(body);
+        setDuplicate({ ...body, reason: body.reason ?? 'content' });
         setSaving(false);
         return;
       }
@@ -270,7 +270,9 @@ export default function AddJobModal({
           {duplicate && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
               <p className="text-sm font-bold text-amber-800 flex items-center gap-2">
-                ⚠️ Cette offre ressemble à une existante ({duplicate.score}% de similarité)
+                {duplicate.reason === 'url'
+                  ? '⚠️ Cette URL correspond à une offre déjà enregistrée'
+                  : `⚠️ Cette offre ressemble à une existante (${duplicate.score}% de similarité)`}
               </p>
               <div className="bg-white rounded-xl p-3 text-sm text-gray-700 border border-amber-100">
                 <p className="font-semibold">{duplicate.job.title as string}</p>
