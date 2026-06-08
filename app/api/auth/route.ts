@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    // 30 jours
-    maxAge: 60 * 60 * 24 * 30,
+    // 1 jour
+    maxAge: 60 * 60 * 24,
   });
   return res;
 }
