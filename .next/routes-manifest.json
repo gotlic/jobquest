@@ -119,6 +119,12 @@
       "namedRegex": "^/api/jobs(?:/)?$"
     },
     {
+      "page": "/api/jobs/check-duplicate",
+      "regex": "^/api/jobs/check\\-duplicate(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/jobs/check\\-duplicate(?:/)?$"
+    },
+    {
       "page": "/candidat",
       "regex": "^/candidat(?:/)?$",
       "routeKeys": {},

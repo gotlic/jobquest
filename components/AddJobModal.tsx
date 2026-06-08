@@ -81,17 +81,16 @@ export default function AddJobModal({
   }
 
   async function checkDuplicateThenSave() {
-    // Le parent appelle l'API — si 409, onSave lance l'exception et on gère ici
-    // On passe par une fetch directe pour intercepter le 409 avant onSave
     if (!data.title || !data.company) { setError('Titre et entreprise requis'); return; }
     if (isEdit) { await handleSave(); return; }
     setSaving(true);
     setDuplicate(null);
     try {
-      const res = await fetch('/api/jobs', {
+      // Vérifie les doublons SANS insérer
+      const res = await fetch('/api/jobs/check-duplicate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, url }),
+        body: JSON.stringify({ title: data.title, company: data.company, location: data.location, url }),
       });
       if (res.status === 409) {
         const body = await res.json();
@@ -99,12 +98,13 @@ export default function AddJobModal({
         setSaving(false);
         return;
       }
-      // Succès → job déjà inséré, on signale au parent de ne pas re-poster
-      await onSave?.({ ...data, url, _alreadySaved: true } as JobData & { _alreadySaved?: boolean });
     } catch {
       setError('Erreur réseau');
+      setSaving(false);
+      return;
     }
-    setSaving(false);
+    // Pas de doublon → insertion via le flux normal (onSave avec les données fraîches)
+    await handleSave();
   }
 
   const field = (label: string, key: keyof JobData, icon: React.ReactNode, placeholder?: string, textarea?: boolean) => (
