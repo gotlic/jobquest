@@ -18,11 +18,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existing = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // These are handled separately — not real SQL columns
-  const NON_COLUMNS = new Set(['note', 'author']);
+  // Colonnes réelles de la table jobs (whitelist pour éviter les champs parasites)
+  const JOB_COLUMNS = new Set([
+    'url', 'title', 'company', 'location', 'remote', 'start_date', 'salary',
+    'contract_type', 'summary', 'description', 'contact_name', 'contact_email',
+    'contact_linkedin', 'network_connection', 'status', 'applied_date',
+    'response_date', 'response_type', 'response_notes', 'added_by', 'priority', 'tags',
+  ]);
 
   const fields = Object.keys(body)
-    .filter(k => k !== 'id' && !NON_COLUMNS.has(k))
+    .filter(k => JOB_COLUMNS.has(k))
     .map(k => `${k} = @${k}`)
     .join(', ');
 

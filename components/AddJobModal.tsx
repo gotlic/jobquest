@@ -239,10 +239,26 @@ export default function AddJobModal({
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1">
                 <Tag size={12} /> Ajouté par
               </label>
+              <div className="flex gap-1.5 mb-1.5">
+                {['Victor', 'Sophie', 'Gautier'].map(name => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setData(prev => ({ ...prev, added_by: prev.added_by === name ? '' : name }))}
+                    className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                      data.added_by === name
+                        ? 'bg-violet-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
               <input
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
-                placeholder="Prénom du helper"
-                value={data.added_by ?? ''}
+                placeholder="Autre prénom…"
+                value={['Victor', 'Sophie', 'Gautier'].includes(data.added_by ?? '') ? '' : (data.added_by ?? '')}
                 onChange={e => setData(prev => ({ ...prev, added_by: e.target.value }))}
               />
             </div>
