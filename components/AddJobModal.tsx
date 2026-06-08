@@ -118,14 +118,14 @@ export default function AddJobModal({
           rows={3}
           placeholder={placeholder}
           value={(data[key] as string) ?? ''}
-          onChange={e => setData({ ...data, [key]: e.target.value })}
+          onChange={e => setData(prev => ({ ...prev, [key]: e.target.value }))}
         />
       ) : (
         <input
           className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
           placeholder={placeholder}
           value={(data[key] as string) ?? ''}
-          onChange={e => setData({ ...data, [key]: e.target.value })}
+          onChange={e => setData(prev => ({ ...prev, [key]: e.target.value }))}
         />
       )}
     </div>
@@ -180,14 +180,14 @@ export default function AddJobModal({
 
           {/* Main fields */}
           <div className="grid grid-cols-2 gap-4">
-            {field('Intitulé du poste *', 'title', <Building2 size={12} />, 'Ex: Développeur Full-Stack Senior')}
-            {field('Entreprise *', 'company', <Building2 size={12} />, 'Ex: Airbnb')}
+            {field('Intitulé du poste *', 'title', <Building2 size={12} />, 'Intitulé du poste')}
+            {field('Entreprise *', 'company', <Building2 size={12} />, 'Entreprise')}
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            {field('Lieu', 'location', <MapPin size={12} />, 'Paris, France')}
-            {field('Début', 'start_date', <Calendar size={12} />, 'ASAP / Sept 2025')}
-            {field('Salaire', 'salary', <DollarSign size={12} />, '55-65k€')}
+            {field('Lieu', 'location', <MapPin size={12} />)}
+            {field('Début', 'start_date', <Calendar size={12} />)}
+            {field('Salaire', 'salary', <DollarSign size={12} />)}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -196,7 +196,7 @@ export default function AddJobModal({
               <select
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
                 value={data.contract_type ?? ''}
-                onChange={e => setData({ ...data, contract_type: e.target.value })}
+                onChange={e => setData(prev => ({ ...prev, contract_type: e.target.value }))}
               >
                 <option value="">— Choisir —</option>
                 {['CDI', 'CDD', 'Freelance', 'Stage', 'Alternance', 'VIE'].map(t => (
@@ -209,7 +209,7 @@ export default function AddJobModal({
               <select
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
                 value={data.remote ?? ''}
-                onChange={e => setData({ ...data, remote: e.target.value })}
+                onChange={e => setData(prev => ({ ...prev, remote: e.target.value }))}
               >
                 <option value="">— Choisir —</option>
                 <option value="full">Full remote 🌍</option>
@@ -225,13 +225,13 @@ export default function AddJobModal({
           <div className="border-t border-gray-100 pt-4">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1"><User size={12} /> Contact recruteur</p>
             <div className="grid grid-cols-3 gap-3">
-              {field('Nom', 'contact_name', null, 'Sarah Martin')}
-              {field('Email', 'contact_email', null, 'sarah@company.com')}
-              {field('LinkedIn', 'contact_linkedin', null, 'linkedin.com/in/...')}
+              {field('Nom', 'contact_name', null)}
+              {field('Email', 'contact_email', null)}
+              {field('LinkedIn', 'contact_linkedin', null)}
             </div>
           </div>
 
-          {field('Connexion réseau 🕸️', 'network_connection', null, 'Ex: Contacter Jean via Alice qui y a travaillé', true)}
+          {field('Connexion réseau 🕸️', 'network_connection', null, undefined, true)}
 
           {/* Meta */}
           <div className="border-t border-gray-100 pt-4 grid grid-cols-2 gap-4">
@@ -243,7 +243,7 @@ export default function AddJobModal({
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
                 placeholder="Prénom du helper"
                 value={data.added_by ?? ''}
-                onChange={e => setData({ ...data, added_by: e.target.value })}
+                onChange={e => setData(prev => ({ ...prev, added_by: e.target.value }))}
               />
             </div>
             <div>
@@ -252,7 +252,7 @@ export default function AddJobModal({
                 {[['low', '🌱 Faible'], ['medium', '⚡ Moyen'], ['high', '🔥 Haute']].map(([v, l]) => (
                   <button
                     key={v}
-                    onClick={() => setData({ ...data, priority: v })}
+                    onClick={() => setData(prev => ({ ...prev, priority: v }))}
                     className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
                       data.priority === v
                         ? v === 'high' ? 'bg-red-500 text-white' : v === 'medium' ? 'bg-amber-400 text-white' : 'bg-green-500 text-white'
