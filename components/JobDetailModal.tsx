@@ -42,7 +42,7 @@ export default function JobDetailModal({
   const [author, setAuthor] = useState('');
   const [saving, setSaving] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
-  const [appliedDate, setAppliedDate] = useState(job.applied_date ?? '');
+  const [appliedDate, setAppliedDate] = useState(job.applied_date ?? new Date().toISOString().split('T')[0]);
   const [responseNotes, setResponseNotes] = useState(job.response_notes ?? '');
   const [networkConnection, setNetworkConnection] = useState(job.network_connection ?? '');
   const [editingNetwork, setEditingNetwork] = useState(false);
