@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X, ExternalLink, MapPin, Calendar, DollarSign, User, Mail, Network, Clock, Send, Trash2, Archive } from 'lucide-react';
+import { X, ExternalLink, MapPin, Calendar, DollarSign, User, Mail, Network, Clock, Send, Trash2, Archive, Pencil } from 'lucide-react';
 import { Job, Activity } from '@/lib/db';
+import AddJobModal from '@/components/AddJobModal';
 
 type JobWithActivities = Job & { activities: Activity[] };
 
@@ -36,6 +37,7 @@ export default function JobDetailModal({
   onDelete: (id: number) => Promise<void>;
 }) {
   const [job, setJob] = useState(initialJob);
+  const [showEdit, setShowEdit] = useState(false);
   const [note, setNote] = useState('');
   const [author, setAuthor] = useState('');
   const [saving, setSaving] = useState(false);
@@ -127,6 +129,13 @@ export default function JobDetailModal({
                   <ExternalLink size={16} />
                 </a>
               )}
+              <button
+                onClick={() => setShowEdit(true)}
+                title="Modifier l'offre"
+                className="p-2 bg-indigo-50 text-indigo-500 rounded-full hover:bg-indigo-100 transition-colors"
+              >
+                <Pencil size={16} />
+              </button>
               {job.status !== 'archived' ? (
                 <button
                   onClick={async () => {
@@ -367,6 +376,23 @@ export default function JobDetailModal({
           </div>
         </div>
       </div>
+
+      {/* Edit modal */}
+      {showEdit && (
+        <AddJobModal
+          editJob={{ ...job, id: job.id }}
+          onClose={() => setShowEdit(false)}
+          onUpdate={async (id, data) => {
+            await fetch(`/api/jobs/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data),
+            });
+            await refreshJob();
+            setShowEdit(false);
+          }}
+        />
+      )}
 
       {/* Delete confirm */}
       {showDelete && (

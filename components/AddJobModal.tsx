@@ -21,17 +21,30 @@ type JobData = {
   priority?: string;
 };
 
-export default function AddJobModal({ onClose, onSave }: { onClose: () => void; onSave: (job: JobData) => Promise<void> }) {
-  const [url, setUrl] = useState('');
+export default function AddJobModal({
+  onClose,
+  onSave,
+  editJob,
+  onUpdate,
+}: {
+  onClose: () => void;
+  onSave?: (job: JobData) => Promise<void>;
+  editJob?: JobData & { id?: number };
+  onUpdate?: (id: number, job: JobData) => Promise<void>;
+}) {
+  const isEdit = !!editJob;
+  const [url, setUrl] = useState(editJob?.url ?? '');
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState('');
-  const [data, setData] = useState<JobData>({
-    url: '', title: '', company: '', location: '', remote: '', start_date: '',
-    salary: '', contract_type: '', summary: '', contact_name: '', contact_email: '',
-    contact_linkedin: '', network_connection: '', added_by: '', priority: 'medium',
-  });
+  const [data, setData] = useState<JobData>(
+    isEdit ? { ...editJob } : {
+      url: '', title: '', company: '', location: '', remote: '', start_date: '',
+      salary: '', contract_type: '', summary: '', contact_name: '', contact_email: '',
+      contact_linkedin: '', network_connection: '', added_by: '', priority: 'medium',
+    }
+  );
 
   async function analyze() {
     if (!url.trim()) return;
@@ -57,7 +70,11 @@ export default function AddJobModal({ onClose, onSave }: { onClose: () => void; 
   async function handleSave() {
     if (!data.title || !data.company) { setError('Titre et entreprise requis'); return; }
     setSaving(true);
-    await onSave({ ...data, url });
+    if (isEdit && onUpdate && editJob?.id) {
+      await onUpdate(editJob.id, { ...data, url });
+    } else if (onSave) {
+      await onSave({ ...data, url });
+    }
     setSaving(false);
   }
 
@@ -90,7 +107,7 @@ export default function AddJobModal({ onClose, onSave }: { onClose: () => void; 
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white rounded-t-3xl px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between z-10">
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <span className="text-2xl">✨</span> Nouvelle offre
+            <span className="text-2xl">{isEdit ? '✏️' : '✨'}</span> {isEdit ? 'Modifier l\'offre' : 'Nouvelle offre'}
           </h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
             <X size={20} className="text-gray-500" />
@@ -233,7 +250,7 @@ export default function AddJobModal({ onClose, onSave }: { onClose: () => void; 
               className="flex-1 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-all shadow-lg shadow-violet-200"
             >
               {saving ? <Loader2 size={16} className="animate-spin" /> : '🚀'}
-              {saving ? 'Sauvegarde...' : 'Ajouter l\'offre'}
+              {saving ? 'Sauvegarde...' : isEdit ? 'Enregistrer' : 'Ajouter l\'offre'}
             </button>
           </div>
         </div>
