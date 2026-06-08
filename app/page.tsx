@@ -1,65 +1,384 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, LayoutGrid, BarChart3, Search, RefreshCw, User } from 'lucide-react';
+import Link from 'next/link';
+import { Job, Activity } from '@/lib/db';
+import JobCard from '@/components/JobCard';
+import AddJobModal from '@/components/AddJobModal';
+import JobDetailModal from '@/components/JobDetailModal';
+
+type JobWithActivities = Job & { activities: Activity[] };
+
+const COLUMNS = [
+  { key: 'todo', emoji: '📋', label: 'À explorer', color: 'from-gray-100 to-gray-50', dot: 'bg-gray-400', count_color: 'text-gray-500' },
+  { key: 'ready', emoji: '✏️', label: 'À postuler', color: 'from-blue-100 to-blue-50', dot: 'bg-blue-400', count_color: 'text-blue-600' },
+  { key: 'applied', emoji: '🚀', label: 'Postulé', color: 'from-violet-100 to-violet-50', dot: 'bg-violet-500', count_color: 'text-violet-600' },
+  { key: 'followup', emoji: '📣', label: 'Relancé', color: 'from-pink-100 to-pink-50', dot: 'bg-pink-400', count_color: 'text-pink-600' },
+  { key: 'interview', emoji: '🤝', label: 'Entretien', color: 'from-amber-100 to-amber-50', dot: 'bg-amber-400', count_color: 'text-amber-600' },
+  { key: 'offer', emoji: '🎉', label: 'Offre !', color: 'from-emerald-100 to-emerald-50', dot: 'bg-emerald-500', count_color: 'text-emerald-600' },
+  { key: 'rejected', emoji: '😔', label: 'Refus', color: 'from-red-100 to-red-50', dot: 'bg-red-400', count_color: 'text-red-600' },
+];
+
+const STAT_CARDS = [
+  { label: 'Total offres', emoji: '📊', keys: ['todo', 'ready', 'applied', 'interview', 'offer', 'rejected', 'archived'], color: 'from-violet-500 to-indigo-600' },
+  { label: 'En cours', emoji: '⚡', keys: ['todo', 'ready', 'applied', 'interview'], color: 'from-amber-400 to-orange-500' },
+  { label: 'Entretiens', emoji: '🤝', keys: ['interview'], color: 'from-blue-500 to-cyan-500' },
+  { label: 'Offres reçues', emoji: '🎉', keys: ['offer'], color: 'from-emerald-400 to-teal-500' },
+];
 
 export default function Home() {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<JobWithActivities | null>(null);
+  const [view, setView] = useState<'kanban' | 'stats'>('kanban');
+  const [search, setSearch] = useState('');
+
+  const loadJobs = useCallback(async () => {
+    const res = await fetch('/api/jobs');
+    const data = await res.json();
+    setJobs(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadJobs(); }, [loadJobs]);
+
+  async function handleAddJob(jobData: Record<string, unknown>) {
+    await fetch('/api/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(jobData),
+    });
+    await loadJobs();
+    setShowAdd(false);
+  }
+
+  async function handleOpenJob(job: Job) {
+    const res = await fetch(`/api/jobs/${job.id}`);
+    const data = await res.json();
+    setSelectedJob(data);
+  }
+
+  async function handleUpdateJob(id: number, data: Record<string, unknown>) {
+    await fetch(`/api/jobs/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    await loadJobs();
+  }
+
+  async function handleDeleteJob(id: number) {
+    await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+    setSelectedJob(null);
+    await loadJobs();
+  }
+
+  const filtered = jobs.filter(j =>
+    !search || `${j.title} ${j.company} ${j.location}`.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const byStatus = (key: string) => filtered.filter(j => j.status === key);
+
+  const stats = STAT_CARDS.map(s => ({
+    ...s,
+    count: jobs.filter(j => s.keys.includes(j.status)).length,
+  }));
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-violet-50 to-indigo-50">
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-lg border-b border-white/50 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center gap-4">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-200">
+              <span className="text-xl">🎯</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-gray-900 leading-none">JobQuest</h1>
+              <p className="text-xs text-gray-400 font-medium">Recherche collaborative</p>
+            </div>
+          </div>
+
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all"
+                placeholder="Rechercher poste, entreprise, lieu..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setView('kanban')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${view === 'kanban' ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <LayoutGrid size={14} /> Kanban
+              </button>
+              <button
+                onClick={() => setView('stats')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${view === 'stats' ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <BarChart3 size={14} /> Stats
+              </button>
+            </div>
+            <Link
+              href="/candidat"
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              <User size={14} /> Zone Candidat
+            </Link>
+            <button
+              onClick={loadJobs}
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <RefreshCw size={16} />
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200"
+            >
+              <Plus size={16} /> Ajouter une offre
+            </button>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      <main className="max-w-screen-2xl mx-auto px-6 py-6">
+        {/* Stats bar */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          {stats.map(s => (
+            <div key={s.label} className={`bg-gradient-to-br ${s.color} rounded-2xl p-4 text-white shadow-lg`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-3xl font-black">{s.count}</p>
+                  <p className="text-sm font-medium opacity-90 mt-0.5">{s.label}</p>
+                </div>
+                <span className="text-3xl opacity-80">{s.emoji}</span>
+              </div>
+            </div>
+          ))}
         </div>
+
+        {view === 'kanban' && (
+          <div>
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mx-auto mb-3"></div>
+                  <p className="text-gray-400 text-sm">Chargement...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-4 overflow-x-auto pb-4">
+                {COLUMNS.map(col => {
+                  const colJobs = byStatus(col.key);
+                  return (
+                    <div key={col.key} className="flex-shrink-0 w-72">
+                      <div className={`bg-gradient-to-b ${col.color} rounded-2xl p-3 min-h-32`}>
+                        <div className="flex items-center justify-between mb-3 px-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-sm leading-none">{col.emoji}</span>
+                            <span className="text-sm font-bold text-gray-700 truncate">{col.label}</span>
+                          </div>
+                          <span className={`text-sm font-black ${col.count_color} flex-shrink-0 ml-1`}>{colJobs.length}</span>
+                        </div>
+                        <div className="space-y-2">
+                          {colJobs.map(job => (
+                            <JobCard key={job.id} job={job} onClick={() => handleOpenJob(job)} />
+                          ))}
+                          {colJobs.length === 0 && (
+                            <div className="text-center py-6 text-gray-300 text-sm">
+                              <p className="text-2xl mb-1">○</p>
+                              Aucune offre
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'stats' && (
+          <div className="grid grid-cols-2 gap-6">
+            {/* Funnel */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span>🔽</span> Funnel de candidature
+              </h3>
+              <div className="space-y-3">
+                {COLUMNS.map((col) => {
+                  const count = byStatus(col.key).length;
+                  const max = Math.max(...COLUMNS.map(c => byStatus(c.key).length), 1);
+                  const width = count === 0 ? 4 : Math.round((count / max) * 100);
+                  return (
+                    <div key={col.key} className="flex items-center gap-3">
+                      <span className="text-xs text-gray-500 w-28 text-right">{col.emoji} {col.label}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${col.dot} transition-all duration-500 flex items-center justify-end pr-2`}
+                          style={{ width: `${width}%`, minWidth: count > 0 ? '2rem' : '4px' }}
+                        >
+                          {count > 0 && <span className="text-white text-xs font-bold">{count}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* By helper */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span>👥</span> Offres par contributeur
+              </h3>
+              {(() => {
+                const byHelper: Record<string, number> = {};
+                jobs.forEach(j => { byHelper[j.added_by] = (byHelper[j.added_by] ?? 0) + 1; });
+                const sorted = Object.entries(byHelper).sort((a, b) => b[1] - a[1]);
+                const max = sorted[0]?.[1] ?? 1;
+                const colors = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500', 'bg-cyan-500', 'bg-emerald-500'];
+                return (
+                  <div className="space-y-3">
+                    {sorted.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Aucune donnée</p>}
+                    {sorted.map(([name, count], i) => (
+                      <div key={name} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-semibold text-gray-700">{name}</span>
+                            <span className="text-sm font-bold text-gray-500">{count}</span>
+                          </div>
+                          <div className="bg-gray-100 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${colors[i % colors.length]} transition-all`}
+                              style={{ width: `${(count / max) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Recent activity */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 col-span-2">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span>⚡</span> Dernières offres ajoutées
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                {jobs.slice(0, 6).map(j => (
+                  <div
+                    key={j.id}
+                    onClick={() => handleOpenJob(j)}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-violet-50 cursor-pointer transition-colors group"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                      {j.company.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-violet-700">{j.title}</p>
+                      <p className="text-xs text-gray-500 truncate">{j.company}</p>
+                    </div>
+                  </div>
+                ))}
+                {jobs.length === 0 && (
+                  <p className="col-span-3 text-center text-gray-400 text-sm py-6">Aucune offre pour l'instant</p>
+                )}
+              </div>
+            </div>
+
+            {/* Priority breakdown */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><span>🎯</span> Par priorité</h3>
+              <div className="flex gap-4 justify-center">
+                {[
+                  { key: 'high', label: '🔥 Haute', bg: 'bg-red-100', text: 'text-red-600', ring: 'ring-red-200' },
+                  { key: 'medium', label: '⚡ Moyen', bg: 'bg-amber-100', text: 'text-amber-600', ring: 'ring-amber-200' },
+                  { key: 'low', label: '🌱 Faible', bg: 'bg-green-100', text: 'text-green-600', ring: 'ring-green-200' },
+                ].map(p => {
+                  const count = jobs.filter(j => j.priority === p.key).length;
+                  return (
+                    <div key={p.key} className={`flex-1 ${p.bg} rounded-2xl p-4 text-center ring-1 ${p.ring}`}>
+                      <p className={`text-3xl font-black ${p.text}`}>{count}</p>
+                      <p className={`text-xs font-semibold ${p.text} mt-1`}>{p.label}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Contract types */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><span>📄</span> Types de contrat</h3>
+              {(() => {
+                const types: Record<string, number> = {};
+                jobs.forEach(j => { if (j.contract_type) types[j.contract_type] = (types[j.contract_type] ?? 0) + 1; });
+                return (
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(types).sort((a, b) => b[1] - a[1]).map(([t, c]) => (
+                      <span key={t} className="px-3 py-1.5 bg-violet-50 text-violet-700 rounded-xl text-sm font-semibold">
+                        {t} <span className="text-violet-400">({c})</span>
+                      </span>
+                    ))}
+                    {Object.keys(types).length === 0 && <p className="text-gray-400 text-sm">Aucune donnée</p>}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Empty state */}
+      {!loading && jobs.length === 0 && view === 'kanban' && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{zIndex: 1}}>
+          <div className="text-center pointer-events-auto">
+            <p className="text-6xl mb-4">🎯</p>
+            <h2 className="text-2xl font-black text-gray-800 mb-2">Commencez votre quête !</h2>
+            <p className="text-gray-500 mb-6 max-w-xs">Ajoutez la première offre d'emploi. Vos aides peuvent en ajouter aussi !</p>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="px-6 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-2xl font-bold hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200"
+            >
+              + Ajouter une offre
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showAdd && (
+        <AddJobModal onClose={() => setShowAdd(false)} onSave={handleAddJob} />
+      )}
+
+      {selectedJob && (
+        <JobDetailModal
+          job={selectedJob}
+          onClose={() => setSelectedJob(null)}
+          onUpdate={async (id, data) => {
+            await handleUpdateJob(id, data);
+            const res = await fetch(`/api/jobs/${id}`);
+            const updated = await res.json();
+            setSelectedJob(updated);
+          }}
+          onDelete={handleDeleteJob}
+        />
+      )}
     </div>
   );
 }

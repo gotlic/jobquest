@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# env (ne jamais committer les clés API)
+.env.local
+.env
+
+# Base de données locale
+*.db
+*.db-wal
+*.db-shm
+
+# Uploads locaux
+/uploads/*
+!/uploads/.gitkeep
