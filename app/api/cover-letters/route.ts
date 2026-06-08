@@ -53,7 +53,7 @@ Cordialement,
 ];
 
 export async function GET() {
-  const db = getDb();
+  const db = await getDb();
   const count = (db.prepare('SELECT COUNT(*) as c FROM cover_letters').get() as { c: number }).c;
   if (count === 0) {
     const insert = db.prepare('INSERT INTO cover_letters (title, content, category_id) VALUES (@title, @content, @category_id)');
@@ -64,7 +64,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const db = getDb();
+  const db = await getDb();
   const body = await req.json();
   const result = db.prepare(`
     INSERT INTO cover_letters (title, content, category_id, is_default)

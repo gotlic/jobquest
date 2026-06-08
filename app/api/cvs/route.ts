@@ -4,7 +4,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
 export async function GET(req: NextRequest) {
-  const db = getDb();
+  const db = await getDb();
   const { searchParams } = new URL(req.url);
   const categoryId = searchParams.get('category_id');
   const cvs = categoryId
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const db = getDb();
+  const db = await getDb();
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
   const categoryId = formData.get('category_id') as string;

@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = getDb();
+  const db = await getDb();
   const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
   if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const activities = db.prepare('SELECT * FROM activities WHERE job_id = ? ORDER BY created_at ASC').all(id);
@@ -12,7 +12,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = getDb();
+  const db = await getDb();
   const body = await req.json();
 
   const existing = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Record<string, unknown> | undefined;
@@ -61,7 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = getDb();
+  const db = await getDb();
   db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
   return NextResponse.json({ ok: true });
 }

@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
 export async function GET() {
-  const db = getDb();
+  const db = await getDb();
   const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC').all();
   return NextResponse.json(jobs);
 }
 
 export async function POST(req: NextRequest) {
-  const db = getDb();
+  const db = await getDb();
   const body = await req.json();
 
   const stmt = db.prepare(`

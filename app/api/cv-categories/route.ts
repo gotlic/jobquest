@@ -11,7 +11,7 @@ const DEFAULT_CATEGORIES = [
 ];
 
 export async function GET() {
-  const db = getDb();
+  const db = await getDb();
 
   // Seed default categories if empty
   const count = (db.prepare('SELECT COUNT(*) as c FROM cv_categories').get() as { c: number }).c;
@@ -25,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const db = getDb();
+  const db = await getDb();
   const body = await req.json();
   const result = db.prepare(
     'INSERT INTO cv_categories (name, color, icon) VALUES (@name, @color, @icon)'
