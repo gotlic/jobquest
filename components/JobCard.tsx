@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { MapPin, Calendar, DollarSign, ExternalLink, User, Wifi, WifiOff, Laptop } from 'lucide-react';
 import { Job } from '@/lib/db';
 
@@ -20,47 +19,57 @@ const remoteIcons: Record<string, React.ReactNode> = {
   no: <span title="Présentiel" className="text-gray-400"><WifiOff size={12} /></span>,
 };
 
-// Palette de couleurs déterministe selon l'initiale
-const AVATAR_COLORS = [
-  'bg-violet-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-500',
-  'bg-pink-500', 'bg-indigo-500', 'bg-teal-500', 'bg-orange-500',
+// Mapping mots-clés → emoji métier
+const JOB_ICONS: [RegExp, string, string][] = [
+  // Amélioration continue / Lean / Qualité
+  [/am[eé]lioration.continue|lean|kaizen|six.sigma|5s|vsm|performance.op/i, '⚙️', 'bg-orange-100'],
+  [/qualit[eé]|qse|qhse|conformit[eé]|audit|certification|iso/i, '✅', 'bg-green-100'],
+  // Ingénierie industrielle / Méthodes
+  [/m[eé]thodes?|industriali[sz]|process engineer|ing[eé]nieur.m[eé]thod/i, '🔩', 'bg-slate-100'],
+  [/maintenance|fiabilit[eé]|mro|technicien|[eé]lectrotech|automaticien/i, '🔧', 'bg-blue-100'],
+  [/automatisme|robotique|automate|plc|scada|supervision/i, '🤖', 'bg-indigo-100'],
+  [/production|manufacturing|fabrication|op[eé]rateur|usinage|fonderie|moulage/i, '🏭', 'bg-amber-100'],
+  // Supply chain / Logistique
+  [/supply.chain|logistique|entrepôt|ordonnancement|planification|approvisionnement|achat/i, '📦', 'bg-yellow-100'],
+  // IT / Data / Digital
+  [/d[eé]veloppeur|software|fullstack|backend|frontend|devops|cloud|architect/i, '💻', 'bg-violet-100'],
+  [/data|analyst|bi |business.intel|machine.learning|ia |intelligence.artificielle/i, '📊', 'bg-cyan-100'],
+  [/cyber|s[eé]curit[eé].info|ssi|rssi/i, '🛡️', 'bg-red-100'],
+  // Finance / Contrôle
+  [/finance|comptab|contr[oô]le.gestion|audit.financ|tresor|budget/i, '💰', 'bg-emerald-100'],
+  // Commerce / Marketing
+  [/commercial|vente|sales|business.dev|account|kam |key.account/i, '💼', 'bg-blue-100'],
+  [/marketing|communication|brand|content|r[eé]seaux.sociaux|seo|digital.market/i, '📣', 'bg-pink-100'],
+  // RH / Management
+  [/ressources.humaines|rh |recrutement|talent|paie|formation.pro/i, '👥', 'bg-purple-100'],
+  [/chef.de.projet|project.manager|directeur|responsable|manager|management/i, '📋', 'bg-teal-100'],
+  // R&D / Science
+  [/recherche|r&d|r.et.d|laboratoire|scientifique|chimiste|pharmacie|biotech/i, '🔬', 'bg-lime-100'],
+  // Design / Architecture
+  [/designer|ux|ui |design.produit|ergonomie|graphiste/i, '🎨', 'bg-rose-100'],
+  [/architecte|bâtiment|genie.civil|btp|construction|urbanisme/i, '🏗️', 'bg-stone-100'],
+  // HSE
+  [/hse|environnement|s[eé]curit[eé].travail|pr[eé]vention.risque/i, '🦺', 'bg-orange-100'],
+  // Juridique
+  [/juridique|avocat|droit|compliance|legal/i, '⚖️', 'bg-gray-100'],
+  // Alternance / Stage
+  [/alternant|apprenti|stagiaire|stage$/i, '🎓', 'bg-violet-100'],
 ];
-function avatarColor(name: string) {
-  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
-}
 
-function getDomain(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    const hostname = new URL(url).hostname; // ex: careers.loreal.com
-    const parts = hostname.split('.');
-    // Garde seulement domaine + TLD (loreal.com), ignore les sous-domaines
-    return parts.length >= 2 ? parts.slice(-2).join('.') : hostname;
-  } catch { return null; }
-}
-
-function CompanyLogo({ company, url }: { company: string; url: string | null }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const domain = getDomain(url);
-  const initial = company.charAt(0).toUpperCase();
-  const color = avatarColor(company);
-
-  if (domain && !imgFailed) {
-    return (
-      <div className="w-9 h-9 rounded-xl border border-gray-100 bg-white flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
-        <img
-          src={`https://icons.duckduckgo.com/ip3/${domain}.ico`}
-          alt={company}
-          className="w-7 h-7 object-contain"
-          onError={() => setImgFailed(true)}
-        />
-      </div>
-    );
+function getJobIcon(title: string, summary?: string | null): { emoji: string; bg: string } {
+  const text = `${title} ${summary ?? ''}`;
+  for (const [pattern, emoji, bg] of JOB_ICONS) {
+    if (pattern.test(text)) return { emoji, bg };
   }
+  // Fallback : initiale de l'entreprise n'est plus utilisée ici, on met une icône neutre
+  return { emoji: '🏢', bg: 'bg-gray-100' };
+}
 
+function JobIcon({ title, summary }: { title: string; summary?: string | null }) {
+  const { emoji, bg } = getJobIcon(title, summary);
   return (
-    <div className={`w-9 h-9 rounded-xl ${color} flex items-center justify-center flex-shrink-0 shadow-sm`}>
-      <span className="text-white font-bold text-sm">{initial}</span>
+    <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 shadow-sm text-xl`}>
+      {emoji}
     </div>
   );
 }
@@ -72,7 +81,7 @@ export default function JobCard({ job, onClick }: { job: Job; onClick: () => voi
       className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-violet-200 cursor-pointer transition-all group"
     >
       <div className="flex items-start gap-3 mb-2">
-        <CompanyLogo company={job.company} url={job.url} />
+        <JobIcon title={job.title} summary={job.summary} />
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-gray-900 text-sm truncate group-hover:text-violet-700 transition-colors">{job.title}</h3>
           <p className="text-sm text-gray-500 font-medium truncate">{job.company}</p>
