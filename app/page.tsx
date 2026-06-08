@@ -36,20 +36,27 @@ export default function Home() {
   const [search, setSearch] = useState('');
 
   const loadJobs = useCallback(async () => {
-    const res = await fetch('/api/jobs');
-    const data = await res.json();
-    setJobs(data);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/jobs');
+      if (!res.ok) return;
+      const data = await res.json();
+      setJobs(data);
+    } catch { /* réseau indisponible */ } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
   async function handleAddJob(jobData: Record<string, unknown>) {
-    await fetch('/api/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(jobData),
-    });
+    try {
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(jobData),
+      });
+      if (!res.ok) { console.error('POST /api/jobs failed', res.status); }
+    } catch (e) { console.error('POST /api/jobs error', e); }
     await loadJobs();
     setShowAdd(false);
   }

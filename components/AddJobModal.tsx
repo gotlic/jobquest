@@ -98,13 +98,13 @@ export default function AddJobModal({
         setSaving(false);
         return;
       }
-    } catch {
-      setError('Erreur réseau');
+      // Pas de doublon → insertion via le flux normal
+      await handleSave();
+    } catch (e) {
+      console.error('checkDuplicateThenSave error', e);
+      setError('Erreur lors de la sauvegarde');
       setSaving(false);
-      return;
     }
-    // Pas de doublon → insertion via le flux normal (onSave avec les données fraîches)
-    await handleSave();
   }
 
   const field = (label: string, key: keyof JobData, icon: React.ReactNode, placeholder?: string, textarea?: boolean) => (
