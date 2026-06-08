@@ -3,28 +3,41 @@ import { getDb } from '@/lib/db';
 import { isDuplicate, type JobLike } from '@/lib/duplicate';
 
 export async function POST(req: NextRequest) {
-  const db = await getDb();
-  const body = await req.json();
+  try {
+    const db = await getDb();
+    const body = await req.json();
 
-  const candidate: JobLike = {
-    title: body.title ?? '',
-    company: body.company ?? '',
-    location: body.location,
-    url: body.url,
-  };
+    const candidate: JobLike = {
+      title: body.title ?? '',
+      company: body.company ?? '',
+      location: body.location,
+      url: body.url,
+    };
 
-  const existing = db.prepare('SELECT * FROM jobs WHERE status != ?').all('archived') as JobLike[];
-  const best = existing
-    .map(j => ({ job: j, ...isDuplicate(candidate, j) }))
-    .filter(r => r.isDuplicate)
-    .sort((a, b) => b.score - a.score)[0];
+    const existing = db.prepare('SELECT * FROM jobs WHERE status != ?').all('archived');
+    const safeExisting = existing.map(j => ({
+      title: (j.title as string) ?? '',
+      company: (j.company as string) ?? '',
+      location: j.location as string | null,
+      url: j.url as string | null,
+      ...j,
+    })) as JobLike[];
 
-  if (best) {
-    return NextResponse.json(
-      { duplicate: best.job, score: Math.round(best.score * 100), reason: best.reason },
-      { status: 409 }
-    );
+    const best = safeExisting
+      .map(j => ({ job: j, ...isDuplicate(candidate, j) }))
+      .filter(r => r.isDuplicate)
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (best) {
+      return NextResponse.json(
+        { duplicate: best.job, score: Math.round(best.score * 100), reason: best.reason },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error('[check-duplicate] error:', e);
+    return NextResponse.json({ ok: true }); // En cas d'erreur, on laisse passer (pas de blocage)
   }
-
-  return NextResponse.json({ ok: true });
 }
