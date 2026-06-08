@@ -59,7 +59,23 @@ export default function AddJobModal({
       });
       const result = await res.json();
       if (result.error) { setError(result.error); return; }
-      setData({ ...result, added_by: data.added_by, priority: data.priority });
+      // Whitelist des champs autorisés depuis l'IA (network_connection est exclu)
+      setData(prev => ({
+        ...prev,
+        url: result.url ?? prev.url,
+        title: result.title ?? prev.title,
+        company: result.company ?? prev.company,
+        location: result.location ?? prev.location,
+        remote: result.remote ?? prev.remote,
+        start_date: result.start_date ?? prev.start_date,
+        salary: result.salary ?? prev.salary,
+        contract_type: result.contract_type ?? prev.contract_type,
+        summary: result.summary ?? prev.summary,
+        contact_name: result.contact_name ?? prev.contact_name,
+        contact_email: result.contact_email ?? prev.contact_email,
+        contact_linkedin: result.contact_linkedin ?? prev.contact_linkedin,
+        // network_connection : laissé intact (zone libre des helpers)
+      }));
       setAnalyzed(true);
     } catch {
       setError('Erreur réseau');
