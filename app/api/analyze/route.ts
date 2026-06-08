@@ -19,57 +19,64 @@ function cacheKey(url: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { url } = await req.json();
-  if (!url) return NextResponse.json({ error: 'URL requise' }, { status: 400 });
-
-  const key = cacheKey(url);
-
-  // 1. Cache in-process
-  if (urlCache.has(key)) {
-    return NextResponse.json({ ...urlCache.get(key), url, _cached: true });
-  }
-
-  // 2. Déjà dans la base de données ?
-  const db = await getDb();
-  const existing = db.prepare('SELECT * FROM jobs WHERE url = ? LIMIT 1').get(url) as Record<string, unknown> | undefined;
-  if (existing) {
-    const cached = {
-      title: existing.title,
-      company: existing.company,
-      location: existing.location,
-      remote: existing.remote,
-      start_date: existing.start_date,
-      salary: existing.salary,
-      contract_type: existing.contract_type,
-      summary: existing.summary,
-      contact_name: existing.contact_name,
-      contact_email: existing.contact_email,
-      contact_linkedin: existing.contact_linkedin,
-    };
-    urlCache.set(key, cached);
-    return NextResponse.json({ ...cached, url, _cached: true });
-  }
-
-  // 3. Appel IA
-  let pageContent = '';
   try {
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobSearchBot/1.0)' },
-      signal: AbortSignal.timeout(10000),
-    });
-    pageContent = await response.text();
-    pageContent = pageContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
-  } catch {
-    return NextResponse.json({ error: 'Impossible de lire cette URL' }, { status: 422 });
-  }
+    const body = await req.json();
+    const url = body?.url;
+    if (!url) return NextResponse.json({ error: 'URL requise' }, { status: 400 });
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: `Tu analyses une offre d'emploi pour un outil de suivi de candidatures. Extrais les informations suivantes du contenu de la page et réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
+    const key = cacheKey(url);
+
+    // 1. Cache in-process
+    if (urlCache.has(key)) {
+      return NextResponse.json({ ...urlCache.get(key), url, _cached: true });
+    }
+
+    // 2. Déjà dans la base de données ?
+    try {
+      const db = await getDb();
+      const existing = db.prepare('SELECT * FROM jobs WHERE url = ? LIMIT 1').get(url) as Record<string, unknown> | undefined;
+      if (existing) {
+        const cached = {
+          title: existing.title,
+          company: existing.company,
+          location: existing.location,
+          remote: existing.remote,
+          start_date: existing.start_date,
+          salary: existing.salary,
+          contract_type: existing.contract_type,
+          summary: existing.summary,
+          contact_name: existing.contact_name,
+          contact_email: existing.contact_email,
+          contact_linkedin: existing.contact_linkedin,
+        };
+        urlCache.set(key, cached);
+        return NextResponse.json({ ...cached, url, _cached: true });
+      }
+    } catch (dbErr) {
+      console.error('[analyze] db lookup error (non-blocking):', dbErr);
+      // Continue vers l'appel IA même si la DB échoue
+    }
+
+    // 3. Appel IA
+    let pageContent = '';
+    try {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobSearchBot/1.0)' },
+        signal: AbortSignal.timeout(10000),
+      });
+      pageContent = await response.text();
+      pageContent = pageContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
+    } catch {
+      return NextResponse.json({ error: 'Impossible de lire cette URL' }, { status: 422 });
+    }
+
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'user',
+          content: `Tu analyses une offre d'emploi pour un outil de suivi de candidatures. Extrais les informations suivantes du contenu de la page et réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
 
 URL: ${url}
 Contenu de la page: ${pageContent}
@@ -88,20 +95,23 @@ JSON attendu:
   "contact_email": "Email recruteur si mentionné (ou null)",
   "contact_linkedin": "Profil LinkedIn recruteur si mentionné (ou null)"
 }`,
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  const text = message.content[0].type === 'text' ? message.content[0].text : '';
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    const text = message.content[0].type === 'text' ? message.content[0].text : '';
+    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 
-  try {
-    const data = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
-    // Mise en cache pour les prochains appels
-    urlCache.set(key, data);
-    return NextResponse.json({ ...data, url });
-  } catch {
-    return NextResponse.json({ error: 'Erreur parsing IA', raw: text }, { status: 500 });
+    try {
+      const data = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+      urlCache.set(key, data);
+      return NextResponse.json({ ...data, url });
+    } catch {
+      return NextResponse.json({ error: 'Erreur parsing IA', raw: text }, { status: 500 });
+    }
+  } catch (e) {
+    console.error('[POST /api/analyze] error:', e);
+    return NextResponse.json({ error: 'Erreur serveur lors de l\'analyse' }, { status: 500 });
   }
 }
