@@ -20,47 +20,49 @@ const remoteIcons: Record<string, React.ReactNode> = {
 };
 
 // Mapping mots-clés → emoji métier
-const JOB_ICONS: [RegExp, string, string][] = [
+const JOB_ICONS: [RegExp, string, string, string][] = [
   // Amélioration continue / Lean / Qualité
-  [/am[eé]lioration.continue|lean|kaizen|six.sigma|5s|vsm|performance.op/i, '⚙️', 'bg-orange-100'],
-  [/qualit[eé]|qse|qhse|conformit[eé]|audit|certification|iso/i, '✅', 'bg-green-100'],
+  [/am[eé]lioration.continue|lean|kaizen|six.sigma|5s|vsm|performance.op/i, '⚙️', 'bg-orange-100', 'Amélioration continue'],
+  [/qualit[eé]|qse|qhse|conformit[eé]|audit|certification|iso/i, '✅', 'bg-green-100', 'Qualité'],
   // Ingénierie industrielle / Méthodes
-  [/m[eé]thodes?|industriali[sz]|process engineer|ing[eé]nieur.m[eé]thod/i, '🔩', 'bg-slate-100'],
-  [/maintenance|fiabilit[eé]|mro|technicien|[eé]lectrotech|automaticien/i, '🔧', 'bg-blue-100'],
-  [/automatisme|robotique|automate|plc|scada|supervision/i, '🤖', 'bg-indigo-100'],
-  [/production|manufacturing|fabrication|op[eé]rateur|usinage|fonderie|moulage/i, '🏭', 'bg-amber-100'],
+  [/m[eé]thodes?|industriali[sz]|process engineer|ing[eé]nieur.m[eé]thod/i, '🔩', 'bg-slate-100', 'Méthodes & Industrialisation'],
+  [/maintenance|fiabilit[eé]|mro|technicien|[eé]lectrotech|automaticien/i, '🔧', 'bg-blue-100', 'Maintenance'],
+  [/automatisme|robotique|automate|plc|scada|supervision/i, '🤖', 'bg-indigo-100', 'Automatisme & Robotique'],
+  [/production|manufacturing|fabrication|op[eé]rateur|usinage|fonderie|moulage/i, '🏭', 'bg-amber-100', 'Production & Fabrication'],
   // Supply chain / Logistique
-  [/supply.chain|logistique|entrepôt|ordonnancement|planification|approvisionnement|achat/i, '📦', 'bg-yellow-100'],
+  [/supply.chain|logistique|entrepôt|ordonnancement|planification|approvisionnement|achat/i, '📦', 'bg-yellow-100', 'Supply Chain & Logistique'],
   // IT / Data / Digital
-  [/d[eé]veloppeur|software|fullstack|backend|frontend|devops|cloud|architect/i, '💻', 'bg-violet-100'],
-  [/data|analyst|bi |business.intel|machine.learning|ia |intelligence.artificielle/i, '📊', 'bg-cyan-100'],
-  [/cyber|s[eé]curit[eé].info|ssi|rssi/i, '🛡️', 'bg-red-100'],
+  [/d[eé]veloppeur|software|fullstack|backend|frontend|devops|cloud|architect/i, '💻', 'bg-violet-100', 'IT & Développement'],
+  [/data|analyst|bi |business.intel|machine.learning|ia |intelligence.artificielle/i, '📊', 'bg-cyan-100', 'Data & Analyse'],
+  [/cyber|s[eé]curit[eé].info|ssi|rssi/i, '🛡️', 'bg-red-100', 'Cybersécurité'],
   // Finance / Contrôle
-  [/finance|comptab|contr[oô]le.gestion|audit.financ|tresor|budget/i, '💰', 'bg-emerald-100'],
+  [/finance|comptab|contr[oô]le.gestion|audit.financ|tresor|budget/i, '💰', 'bg-emerald-100', 'Finance & Contrôle de gestion'],
   // R&D / Science
-  [/recherche|r&d|r.et.d|laboratoire|scientifique|chimiste|pharmacie|biotech/i, '🔬', 'bg-lime-100'],
+  [/recherche|r&d|r.et.d|laboratoire|scientifique|chimiste|pharmacie|biotech/i, '🔬', 'bg-lime-100', 'R&D & Sciences'],
   // Design / Architecture
-  [/designer|ux|ui |design.produit|ergonomie|graphiste/i, '🎨', 'bg-rose-100'],
-  [/architecte|bâtiment|genie.civil|btp|construction|urbanisme/i, '🏗️', 'bg-stone-100'],
+  [/designer|ux|ui |design.produit|ergonomie|graphiste/i, '🎨', 'bg-rose-100', 'Design & UX'],
+  [/architecte|bâtiment|genie.civil|btp|construction|urbanisme/i, '🏗️', 'bg-stone-100', 'BTP & Architecture'],
   // HSE
-  [/hse|environnement|s[eé]curit[eé].travail|pr[eé]vention.risque/i, '🦺', 'bg-orange-100'],
+  [/hse|environnement|s[eé]curit[eé].travail|pr[eé]vention.risque/i, '🦺', 'bg-orange-100', 'HSE & Environnement'],
   // Juridique
-  [/juridique|avocat|droit|compliance|legal/i, '⚖️', 'bg-gray-100'],
+  [/juridique|avocat|droit|compliance|legal/i, '⚖️', 'bg-gray-100', 'Juridique & Compliance'],
 ];
 
-function getJobIcon(title: string, summary?: string | null): { emoji: string; bg: string } {
+function getJobIcon(title: string, summary?: string | null): { emoji: string; bg: string; label: string } {
   const text = `${title} ${summary ?? ''}`;
-  for (const [pattern, emoji, bg] of JOB_ICONS) {
-    if (pattern.test(text)) return { emoji, bg };
+  for (const [pattern, emoji, bg, label] of JOB_ICONS) {
+    if (pattern.test(text)) return { emoji, bg, label };
   }
-  // Fallback : initiale de l'entreprise n'est plus utilisée ici, on met une icône neutre
-  return { emoji: '🏢', bg: 'bg-gray-100' };
+  return { emoji: '🏢', bg: 'bg-gray-100', label: 'Autre' };
 }
 
 function JobIcon({ title, summary }: { title: string; summary?: string | null }) {
-  const { emoji, bg } = getJobIcon(title, summary);
+  const { emoji, bg, label } = getJobIcon(title, summary);
   return (
-    <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 shadow-sm text-xl`}>
+    <div
+      title={label}
+      className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 shadow-sm text-xl cursor-default`}
+    >
       {emoji}
     </div>
   );
