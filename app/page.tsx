@@ -45,11 +45,13 @@ export default function Home() {
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
   async function handleAddJob(jobData: Record<string, unknown>) {
-    await fetch('/api/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(jobData),
-    });
+    if (!jobData._alreadySaved) {
+      await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(jobData),
+      });
+    }
     await loadJobs();
     setShowAdd(false);
   }

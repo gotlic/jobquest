@@ -99,8 +99,8 @@ export default function AddJobModal({
         setSaving(false);
         return;
       }
-      // Succès → on appelle onSave avec _force pour éviter re-check
-      await onSave?.({ ...data, url, _force: true } as JobData & { _force?: boolean });
+      // Succès → job déjà inséré, on signale au parent de ne pas re-poster
+      await onSave?.({ ...data, url, _alreadySaved: true } as JobData & { _alreadySaved?: boolean });
     } catch {
       setError('Erreur réseau');
     }
