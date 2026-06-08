@@ -64,13 +64,15 @@ class WrappedStatement {
   run(...args: unknown[]): { lastInsertRowid: number; changes: number } {
     const stmt = this.prepareAndBind(args);
     stmt.step();
+    // Get rowid and changes BEFORE export() — sql.js export() resets last_insert_rowid() to 0
+    const rowid =
+      (this.sqlDb.exec('SELECT last_insert_rowid()')[0]?.values[0]?.[0] as number) ?? 0;
+    const changes = this.sqlDb.getRowsModified();
     stmt.free();
     // Persist to disk after every write
     fs.writeFileSync(this.dbPath, Buffer.from(this.sqlDb.export()));
     dbMtime = fs.statSync(this.dbPath).mtimeMs;
-    const rowid =
-      (this.sqlDb.exec('SELECT last_insert_rowid()')[0]?.values[0]?.[0] as number) ?? 0;
-    return { lastInsertRowid: rowid, changes: this.sqlDb.getRowsModified() };
+    return { lastInsertRowid: rowid, changes };
   }
 }
 
