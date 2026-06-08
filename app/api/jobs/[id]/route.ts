@@ -26,9 +26,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .map(k => `${k} = @${k}`)
     .join(', ');
 
-  if (!fields) return NextResponse.json(existing);
-
-  db.prepare(`UPDATE jobs SET ${fields} WHERE id = @id`).run({ ...body, id });
+  if (fields) {
+    db.prepare(`UPDATE jobs SET ${fields} WHERE id = @id`).run({ ...body, id });
+  }
 
   // Log status changes
   if (body.status && body.status !== existing.status) {
