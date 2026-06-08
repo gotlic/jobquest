@@ -67,6 +67,7 @@ class WrappedStatement {
     stmt.free();
     // Persist to disk after every write
     fs.writeFileSync(this.dbPath, Buffer.from(this.sqlDb.export()));
+    dbMtime = fs.statSync(this.dbPath).mtimeMs;
     const rowid =
       (this.sqlDb.exec('SELECT last_insert_rowid()')[0]?.values[0]?.[0] as number) ?? 0;
     return { lastInsertRowid: rowid, changes: this.sqlDb.getRowsModified() };
@@ -175,37 +176,48 @@ const SCHEMA_SQL = `
 `;
 
 // ---------------------------------------------------------------------------
-// Singleton
+// Singleton — with file-mtime invalidation for multi-process Passenger workers
 // ---------------------------------------------------------------------------
 
+let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null;
 let dbInstance: WrappedDb | null = null;
-let dbPromise: Promise<WrappedDb> | null = null;
+let dbMtime: number = 0; // mtime of the file when we last loaded
+
+async function getSqlJs() {
+  if (!SQL) SQL = await initSqlJs();
+  return SQL;
+}
 
 export async function getDb(): Promise<WrappedDb> {
-  if (dbInstance) return dbInstance;
-  if (!dbPromise) {
-    dbPromise = (async () => {
-      const SQL = await initSqlJs();
-      let sqlDb: SqlJsDatabase;
-
-      if (fs.existsSync(DB_PATH)) {
-        const buf = fs.readFileSync(DB_PATH);
-        sqlDb = new SQL.Database(buf);
-      } else {
-        sqlDb = new SQL.Database();
-      }
-
-      // Ensure schema is up to date
-      sqlDb.exec(SCHEMA_SQL);
-
-      // Persist initial state
-      fs.writeFileSync(DB_PATH, Buffer.from(sqlDb.export()));
-
-      dbInstance = new WrappedDb(sqlDb, DB_PATH);
-      return dbInstance;
-    })();
+  // Check if the on-disk file has been modified since we loaded (another worker wrote it)
+  let currentMtime = 0;
+  try {
+    currentMtime = fs.statSync(DB_PATH).mtimeMs;
+  } catch {
+    // file doesn't exist yet
   }
-  return dbPromise;
+
+  if (dbInstance && currentMtime === dbMtime) return dbInstance;
+
+  const SqlJs = await getSqlJs();
+  let sqlDb: SqlJsDatabase;
+
+  if (fs.existsSync(DB_PATH)) {
+    const buf = fs.readFileSync(DB_PATH);
+    sqlDb = new SqlJs.Database(buf);
+  } else {
+    sqlDb = new SqlJs.Database();
+  }
+
+  // Ensure schema is up to date
+  sqlDb.exec(SCHEMA_SQL);
+
+  // Persist initial state (schema creation)
+  fs.writeFileSync(DB_PATH, Buffer.from(sqlDb.export()));
+  dbMtime = fs.statSync(DB_PATH).mtimeMs;
+
+  dbInstance = new WrappedDb(sqlDb, DB_PATH);
+  return dbInstance;
 }
 
 // ---------------------------------------------------------------------------
