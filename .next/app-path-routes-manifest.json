@@ -14,7 +14,7 @@
   "/api/jobs/route": "/api/jobs",
   "/api/uploads/[filename]/route": "/api/uploads/[filename]",
   "/candidat/page": "/candidat",
-  "/favicon.ico/route": "/favicon.ico",
+  "/icon.svg/route": "/icon.svg",
   "/login/page": "/login",
   "/page": "/"
 }

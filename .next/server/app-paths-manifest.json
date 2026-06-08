@@ -14,7 +14,7 @@
   "/api/jobs/route": "app/api/jobs/route.js",
   "/api/uploads/[filename]/route": "app/api/uploads/[filename]/route.js",
   "/candidat/page": "app/candidat/page.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/icon.svg/route": "app/icon.svg/route.js",
   "/login/page": "app/login/page.js",
   "/page": "app/page.js"
 }

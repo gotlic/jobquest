@@ -131,10 +131,10 @@
       "namedRegex": "^/candidat(?:/)?$"
     },
     {
-      "page": "/favicon.ico",
-      "regex": "^/favicon\\.ico(?:/)?$",
+      "page": "/icon.svg",
+      "regex": "^/icon\\.svg(?:/)?$",
       "routeKeys": {},
-      "namedRegex": "^/favicon\\.ico(?:/)?$"
+      "namedRegex": "^/icon\\.svg(?:/)?$"
     },
     {
       "page": "/login",
