@@ -37,12 +37,6 @@ const JOB_ICONS: [RegExp, string, string][] = [
   [/cyber|s[eé]curit[eé].info|ssi|rssi/i, '🛡️', 'bg-red-100'],
   // Finance / Contrôle
   [/finance|comptab|contr[oô]le.gestion|audit.financ|tresor|budget/i, '💰', 'bg-emerald-100'],
-  // Commerce / Marketing
-  [/commercial|vente|sales|business.dev|account|kam |key.account/i, '💼', 'bg-blue-100'],
-  [/marketing|communication|brand|content|r[eé]seaux.sociaux|seo|digital.market/i, '📣', 'bg-pink-100'],
-  // RH / Management
-  [/ressources.humaines|rh |recrutement|talent|paie|formation.pro/i, '👥', 'bg-purple-100'],
-  [/chef.de.projet|project.manager|directeur|responsable|manager|management/i, '📋', 'bg-teal-100'],
   // R&D / Science
   [/recherche|r&d|r.et.d|laboratoire|scientifique|chimiste|pharmacie|biotech/i, '🔬', 'bg-lime-100'],
   // Design / Architecture
@@ -52,8 +46,6 @@ const JOB_ICONS: [RegExp, string, string][] = [
   [/hse|environnement|s[eé]curit[eé].travail|pr[eé]vention.risque/i, '🦺', 'bg-orange-100'],
   // Juridique
   [/juridique|avocat|droit|compliance|legal/i, '⚖️', 'bg-gray-100'],
-  // Alternance / Stage
-  [/alternant|apprenti|stagiaire|stage$/i, '🎓', 'bg-violet-100'],
 ];
 
 function getJobIcon(title: string, summary?: string | null): { emoji: string; bg: string } {
