@@ -16,11 +16,11 @@
   },
   {
     "route": "/candidat",
-    "firstLoadUncompressedJsBytes": 532442,
+    "firstLoadUncompressedJsBytes": 532731,
     "firstLoadChunkPaths": [
       ".next/static/chunks/05-c3ty_6dwfk.js",
       ".next/static/chunks/14mrh2-p_w84d.js",
-      ".next/static/chunks/2scoimkektogr.js",
+      ".next/static/chunks/3myna9lvnu1k4.js",
       ".next/static/chunks/1rpyum114dc60.js",
       ".next/static/chunks/27jktro2p5rq9.js",
       ".next/static/chunks/3n7dm2ojtyzwn.js",

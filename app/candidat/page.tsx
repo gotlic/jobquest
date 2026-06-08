@@ -32,6 +32,7 @@ export default function CandidatPage() {
   const [showNewLetter, setShowNewLetter] = useState(false);
   const [newLetterTitle, setNewLetterTitle] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -48,8 +49,7 @@ export default function CandidatPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function uploadFile(file: File) {
     if (!file || !selectedCat) return;
     setUploading(true);
     const fd = new FormData();
@@ -60,6 +60,18 @@ export default function CandidatPage() {
     await load();
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) await uploadFile(file);
+  }
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) await uploadFile(file);
   }
 
   async function deleteCV(id: number) {
@@ -241,7 +253,10 @@ export default function CandidatPage() {
                     {/* Upload zone */}
                     <div
                       onClick={() => fileInputRef.current?.click()}
-                      className={`border-2 border-dashed ${catColors.border} rounded-2xl p-8 text-center cursor-pointer hover:${catColors.bg} transition-all group`}
+                      onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                      onDragLeave={() => setDragging(false)}
+                      onDrop={handleDrop}
+                      className={`border-2 border-dashed ${dragging ? 'border-violet-500 bg-violet-50 scale-[1.02]' : catColors.border} rounded-2xl p-8 text-center cursor-pointer hover:${catColors.bg} transition-all group`}
                     >
                       <Upload size={32} className={`mx-auto mb-3 ${catColors.text} opacity-50 group-hover:opacity-100 transition-opacity`} />
                       <p className={`font-semibold ${catColors.text}`}>
