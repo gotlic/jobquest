@@ -59,7 +59,6 @@ export default function AddJobModal({
       });
       const result = await res.json();
       if (result.error) { setError(result.error); return; }
-      setAnalyzed(result._cached ? 'cached' : 'fresh');
       // Whitelist des champs autorisés depuis l'IA (network_connection est exclu)
       setData(prev => ({
         ...prev,
@@ -77,7 +76,7 @@ export default function AddJobModal({
         contact_linkedin: result.contact_linkedin ?? prev.contact_linkedin,
         // network_connection : laissé intact (zone libre des helpers)
       }));
-      setAnalyzed(true);
+      setAnalyzed(result._cached ? 'cached' : 'fresh');
     } catch {
       setError('Erreur réseau');
     } finally {
@@ -89,12 +88,18 @@ export default function AddJobModal({
     if (!data.title || !data.company) { setError('Titre et entreprise requis'); return; }
     setSaving(true);
     setDuplicate(null);
-    if (isEdit && onUpdate && editJob?.id) {
-      await onUpdate(editJob.id, { ...data, url });
-    } else if (onSave) {
-      await onSave({ ...data, url, ...(force ? { _force: true } : {}) } as JobData & { _force?: boolean });
+    try {
+      if (isEdit && onUpdate && editJob?.id) {
+        await onUpdate(editJob.id, { ...data, url });
+      } else if (onSave) {
+        await onSave({ ...data, url, ...(force ? { _force: true } : {}) } as JobData & { _force?: boolean });
+      }
+    } catch (e) {
+      console.error('handleSave error', e);
+      setError('Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function checkDuplicateThenSave() {

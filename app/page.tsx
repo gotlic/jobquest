@@ -62,18 +62,23 @@ export default function Home() {
   }
 
   async function handleOpenJob(job: Job) {
-    const res = await fetch(`/api/jobs/${job.id}`);
-    const data = await res.json();
-    setSelectedJob(data);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setSelectedJob(data);
+    } catch (e) { console.error('handleOpenJob error', e); }
   }
 
   async function handleUpdateJob(id: number, data: Record<string, unknown>) {
-    await fetch(`/api/jobs/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    await loadJobs();
+    try {
+      await fetch(`/api/jobs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      await loadJobs();
+    } catch (e) { console.error('handleUpdateJob error', e); }
   }
 
   async function handleDeleteJob(id: number) {
@@ -378,10 +383,11 @@ export default function Home() {
           job={selectedJob}
           onClose={() => setSelectedJob(null)}
           onUpdate={async (id, data) => {
-            await handleUpdateJob(id, data);
-            const res = await fetch(`/api/jobs/${id}`);
-            const updated = await res.json();
-            setSelectedJob(updated);
+            try {
+              await handleUpdateJob(id, data);
+              const res = await fetch(`/api/jobs/${id}`);
+              if (res.ok) setSelectedJob(await res.json());
+            } catch (e) { console.error('onUpdate error', e); }
           }}
           onDelete={handleDeleteJob}
         />
