@@ -3,6 +3,7 @@
   "/_not-found/page": "/_not-found",
   "/api/activities/[id]/route": "/api/activities/[id]",
   "/api/analyze/route": "/api/analyze",
+  "/api/auth/route": "/api/auth",
   "/api/cover-letters/[id]/route": "/api/cover-letters/[id]",
   "/api/cover-letters/route": "/api/cover-letters",
   "/api/cv-categories/route": "/api/cv-categories",
@@ -13,5 +14,6 @@
   "/api/uploads/[filename]/route": "/api/uploads/[filename]",
   "/candidat/page": "/candidat",
   "/favicon.ico/route": "/favicon.ico",
+  "/login/page": "/login",
   "/page": "/"
 }

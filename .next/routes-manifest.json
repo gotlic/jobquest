@@ -89,6 +89,12 @@
       "namedRegex": "^/api/analyze(?:/)?$"
     },
     {
+      "page": "/api/auth",
+      "regex": "^/api/auth(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/auth(?:/)?$"
+    },
+    {
       "page": "/api/cover-letters",
       "regex": "^/api/cover\\-letters(?:/)?$",
       "routeKeys": {},
@@ -123,6 +129,12 @@
       "regex": "^/favicon\\.ico(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/favicon\\.ico(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
     }
   ],
   "dataRoutes": [],
