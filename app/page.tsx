@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Plus, LayoutGrid, BarChart3, Search, RefreshCw, User } from 'lucide-react';
 import Link from 'next/link';
 import { Job, Activity } from '@/lib/db';
 import JobCard from '@/components/JobCard';
 import AddJobModal from '@/components/AddJobModal';
 import JobDetailModal from '@/components/JobDetailModal';
+const JobsMap = lazy(() => import('@/components/JobsMap'));
 
 type JobWithActivities = Job & { activities: Activity[] };
 
@@ -222,85 +223,99 @@ export default function Home() {
         )}
 
         {view === 'stats' && (
-          <div className="grid grid-cols-2 gap-6">
-            {/* Funnel */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>🔽</span> Funnel de candidature
-              </h3>
-              <div className="space-y-3">
-                {COLUMNS.map((col) => {
-                  const count = byStatus(col.key).length;
-                  const max = Math.max(...COLUMNS.map(c => byStatus(c.key).length), 1);
-                  const width = count === 0 ? 4 : Math.round((count / max) * 100);
-                  return (
-                    <div key={col.key} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500 w-28 text-right">{col.emoji} {col.label}</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${col.dot} transition-all duration-500 flex items-center justify-end pr-2`}
-                          style={{ width: `${width}%`, minWidth: count > 0 ? '2rem' : '4px' }}
-                        >
-                          {count > 0 && <span className="text-white text-xs font-bold">{count}</span>}
+          <div className="space-y-6">
+            {/* Ligne 1 : Tunnel + Contributeurs */}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Tunnel */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <span>🔽</span> Tunnel de candidature
+                </h3>
+                <div className="space-y-3">
+                  {COLUMNS.map((col) => {
+                    const count = jobs.filter(j => j.status === col.key).length;
+                    const max = Math.max(...COLUMNS.map(c => jobs.filter(j => j.status === c.key).length), 1);
+                    const width = count === 0 ? 0 : Math.round((count / max) * 100);
+                    return (
+                      <div key={col.key} className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500 w-28 text-right shrink-0">{col.emoji} {col.label}</span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${col.dot} transition-all duration-500 flex items-center justify-end pr-2`}
+                            style={{ width: `${width}%`, minWidth: count > 0 ? '2rem' : '0' }}
+                          >
+                            {count > 0 && <span className="text-white text-xs font-bold">{count}</span>}
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Contributeurs */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <span>👥</span> Offres par contributeur
+                </h3>
+                {(() => {
+                  const byHelper: Record<string, number> = {};
+                  jobs.forEach(j => { byHelper[j.added_by] = (byHelper[j.added_by] ?? 0) + 1; });
+                  const sorted = Object.entries(byHelper).sort((a, b) => b[1] - a[1]);
+                  const max = sorted[0]?.[1] ?? 1;
+                  const colors = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500', 'bg-cyan-500', 'bg-emerald-500'];
+                  return (
+                    <div className="space-y-3">
+                      {sorted.length === 0 && <p className="text-gray-400 text-sm text-center py-8">Aucune donnée</p>}
+                      {sorted.map(([name, count], i) => (
+                        <div key={name} className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-semibold text-gray-700">{name}</span>
+                              <span className="text-sm font-bold text-gray-500">{count}</span>
+                            </div>
+                            <div className="bg-gray-100 rounded-full h-2">
+                              <div className={`h-2 rounded-full ${colors[i % colors.length]} transition-all`} style={{ width: `${(count / max) * 100}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   );
-                })}
+                })()}
               </div>
             </div>
 
-            {/* By helper */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            {/* Ligne 2 : Carte de France */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>👥</span> Offres par contributeur
+                <span>🗺️</span> Carte des offres
               </h3>
-              {(() => {
-                const byHelper: Record<string, number> = {};
-                jobs.forEach(j => { byHelper[j.added_by] = (byHelper[j.added_by] ?? 0) + 1; });
-                const sorted = Object.entries(byHelper).sort((a, b) => b[1] - a[1]);
-                const max = sorted[0]?.[1] ?? 1;
-                const colors = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500', 'bg-cyan-500', 'bg-emerald-500'];
-                return (
-                  <div className="space-y-3">
-                    {sorted.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Aucune donnée</p>}
-                    {sorted.map(([name, count], i) => (
-                      <div key={name} className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-semibold text-gray-700">{name}</span>
-                            <span className="text-sm font-bold text-gray-500">{count}</span>
-                          </div>
-                          <div className="bg-gray-100 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${colors[i % colors.length]} transition-all`}
-                              style={{ width: `${(count / max) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
+              <Suspense fallback={
+                <div className="h-[480px] flex items-center justify-center bg-gray-50 rounded-2xl text-sm text-gray-400">
+                  Chargement de la carte…
+                </div>
+              }>
+                <JobsMap jobs={jobs} />
+              </Suspense>
             </div>
 
-            {/* Recent activity */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 col-span-2">
+            {/* Ligne 3 : Dernières offres */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <span>⚡</span> Dernières offres ajoutées
               </h3>
-              <div className="grid grid-cols-3 gap-3">
-                {jobs.slice(0, 6).map(j => (
+              <div className="grid grid-cols-4 gap-3">
+                {jobs.slice(0, 8).map(j => (
                   <div
                     key={j.id}
                     onClick={() => handleOpenJob(j)}
                     className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-violet-50 cursor-pointer transition-colors group"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
                       {j.company.charAt(0)}
                     </div>
                     <div className="min-w-0">
@@ -310,48 +325,9 @@ export default function Home() {
                   </div>
                 ))}
                 {jobs.length === 0 && (
-                  <p className="col-span-3 text-center text-gray-400 text-sm py-6">Aucune offre pour l'instant</p>
+                  <p className="col-span-4 text-center text-gray-400 text-sm py-6">Aucune offre pour l'instant</p>
                 )}
               </div>
-            </div>
-
-            {/* Priority breakdown */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><span>🎯</span> Par priorité</h3>
-              <div className="flex gap-4 justify-center">
-                {[
-                  { key: 'high', label: '🔥 Haute', bg: 'bg-red-100', text: 'text-red-600', ring: 'ring-red-200' },
-                  { key: 'medium', label: '⚡ Moyen', bg: 'bg-amber-100', text: 'text-amber-600', ring: 'ring-amber-200' },
-                  { key: 'low', label: '🌱 Faible', bg: 'bg-green-100', text: 'text-green-600', ring: 'ring-green-200' },
-                ].map(p => {
-                  const count = jobs.filter(j => j.priority === p.key).length;
-                  return (
-                    <div key={p.key} className={`flex-1 ${p.bg} rounded-2xl p-4 text-center ring-1 ${p.ring}`}>
-                      <p className={`text-3xl font-black ${p.text}`}>{count}</p>
-                      <p className={`text-xs font-semibold ${p.text} mt-1`}>{p.label}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Contract types */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><span>📄</span> Types de contrat</h3>
-              {(() => {
-                const types: Record<string, number> = {};
-                jobs.forEach(j => { if (j.contract_type) types[j.contract_type] = (types[j.contract_type] ?? 0) + 1; });
-                return (
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(types).sort((a, b) => b[1] - a[1]).map(([t, c]) => (
-                      <span key={t} className="px-3 py-1.5 bg-violet-50 text-violet-700 rounded-xl text-sm font-semibold">
-                        {t} <span className="text-violet-400">({c})</span>
-                      </span>
-                    ))}
-                    {Object.keys(types).length === 0 && <p className="text-gray-400 text-sm">Aucune donnée</p>}
-                  </div>
-                );
-              })()}
             </div>
           </div>
         )}
