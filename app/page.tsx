@@ -86,8 +86,9 @@ export default function Home() {
     await loadJobs();
   }
 
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const filtered = jobs.filter(j =>
-    !search || `${j.title} ${j.company} ${j.location}`.toLowerCase().includes(search.toLowerCase())
+    !search || norm(`${j.title} ${j.company} ${j.location}`).includes(norm(search))
   );
 
   const byStatus = (key: string) => filtered.filter(j => j.status === key);
