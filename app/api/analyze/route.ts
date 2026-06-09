@@ -95,18 +95,11 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        // Heartbeat pendant l'appel IA — toutes les 8s pour éviter le timeout Passenger
+        // Appel IA en streaming — les premiers tokens arrivent en ~1-2s
+        // ce qui envoie immédiatement du trafic et évite le timeout Passenger
         controller.enqueue(sseChunk({ status: 'analyzing' }));
 
-        let heartbeatCount = 0;
-        const heartbeatTimer = setInterval(() => {
-          heartbeatCount++;
-          try { controller.enqueue(sseChunk({ status: 'thinking', tick: heartbeatCount })); } catch { /* ignore */ }
-        }, 8000);
-
-        let message;
-        try {
-          message = await client.messages.create({
+        const anthropicStream = client.messages.stream({
           model: 'claude-sonnet-4-6',
           max_tokens: 1024,
           messages: [
@@ -133,10 +126,19 @@ JSON attendu:
 }`,
             },
           ],
-          });
-        } finally {
-          clearInterval(heartbeatTimer);
-        }
+        });
+
+        // Chaque delta de texte → heartbeat SSE (garde Passenger vivant)
+        let tickCount = 0;
+        anthropicStream.on('text', () => {
+          tickCount++;
+          // Heartbeat à chaque 5 tokens pour ne pas surcharger
+          if (tickCount % 5 === 1) {
+            try { controller.enqueue(sseChunk({ status: 'thinking', tick: tickCount })); } catch { /* ignore */ }
+          }
+        });
+
+        const message = await anthropicStream.finalMessage();
 
         const text = message.content[0].type === 'text' ? message.content[0].text : '';
         const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
