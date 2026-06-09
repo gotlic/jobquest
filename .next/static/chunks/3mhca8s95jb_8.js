@@ -1,0 +1,29 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,80637,e=>{"use strict";var t=e.i(43476),o=e.i(71645);let r={};async function l(e){if(e in r)return r[e];try{let t=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(e)}&format=json&limit=1`,{headers:{"Accept-Language":"fr"}}),o=await t.json(),l=o[0]?{lat:parseFloat(o[0].lat),lon:parseFloat(o[0].lon)}:null;return r[e]=l,l}catch{return r[e]=null,null}}let a={todo:"#6b7280",applied:"#7c3aed",followup:"#ec4899",interview:"#f59e0b",offer:"#10b981",rejected:"#ef4444"};e.s(["default",0,function({jobs:n}){let s=(0,o.useRef)(null),i=(0,o.useRef)(null),[d,c]=(0,o.useState)([]),[p,u]=(0,o.useState)(null);(0,o.useEffect)(()=>{let e=n.filter(e=>"archived"!==e.status&&e.location);if(0===e.length)return void u(null);let t=[...new Set(e.map(e=>e.location))];u({done:0,total:t.length});let o=!1;return(async()=>{for(let e=0;e<t.length;e++){if(o)return;await l(t[e]),o||u({done:e+1,total:t.length}),e<t.length-1&&await new Promise(e=>setTimeout(e,300))}if(!o){let t=[];e.forEach(e=>{let o=r[e.location];o&&t.push({job:e,lat:o.lat,lon:o.lon})}),c(t),u(null)}})(),()=>{o=!0}},[n]),(0,o.useEffect)(()=>{let t;if(s.current)return e.A(71400).then(e=>{s.current&&(i.current&&(i.current.remove(),i.current=null),t=e.map(s.current,{center:[46.5,2.5],zoom:6,zoomControl:!0,scrollWheelZoom:!0,attributionControl:!1}),e.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(t),i.current=t)}),()=>{i.current&&(i.current.remove(),i.current=null)}},[]),(0,o.useEffect)(()=>{i.current&&0!==d.length&&e.A(71400).then(e=>{let t=i.current;t.eachLayer(e=>{e._isJobMarker&&t.removeLayer(e)});let o=new Map;d.forEach(e=>{var t,r;let l=(t=e.lat,r=e.lon,`${(Math.round(2*t)/2).toFixed(1)},${(Math.round(2*r)/2).toFixed(1)}`);o.has(l)||o.set(l,[]),o.get(l).push(e)}),o.forEach(o=>{let r=o.reduce((e,t)=>e+t.lat,0)/o.length,l=o.reduce((e,t)=>e+t.lon,0)/o.length,n=o.length,s=n>1,i={};o.forEach(e=>{i[e.job.status]=(i[e.job.status]??0)+1});let d=a[Object.entries(i).sort((e,t)=>t[1]-e[1])[0][0]]??"#6b7280",c=s?36:26,p=e.divIcon({className:"",html:`<div style="
+            background:${d};
+            color:#fff;
+            border-radius:50%;
+            width:${c}px;height:${c}px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:${s?13:11}px;font-weight:700;
+            border:2.5px solid #fff;
+            box-shadow:0 2px 8px rgba(0,0,0,.25);
+            cursor:pointer;
+          ">${n}</div>`,iconSize:[c,c],iconAnchor:[c/2,c/2]}),u=o.slice(0,6).map(e=>`<div style="padding:2px 0;line-height:1.4">
+            <span style="font-weight:700;font-size:12px;white-space:normal;word-break:break-word;display:block">${e.job.title}</span>
+            <span style="color:#6b7280;font-size:11px;white-space:normal;display:block">${e.job.company}${e.job.location?` \xb7 ${e.job.location}`:""}</span>
+          </div>`).join('<div style="border-top:1px solid #e5e7eb;margin:3px 0"></div>')+(o.length>6?`<div style="color:#9ca3af;font-size:11px;padding-top:4px">+${o.length-6} autres</div>`:""),h=e.marker([r,l],{icon:p});h._isJobMarker=!0,h.bindTooltip(u,{direction:"top",offset:[0,-(c/2)-4],opacity:1,className:"jobs-map-tooltip"}),h.addTo(t)})})},[d]);let h=n.filter(e=>"archived"!==e.status&&e.location).length,f=d.length;return(0,t.jsxs)("div",{className:"relative rounded-2xl overflow-hidden border border-gray-100 shadow-sm",style:{height:480},children:[(0,t.jsx)("style",{children:`
+        .jobs-map-tooltip {
+          background: white !important;
+          border: 1px solid #e5e7eb !important;
+          border-radius: 12px !important;
+          padding: 10px 12px !important;
+          box-shadow: 0 4px 20px rgba(0,0,0,.12) !important;
+          font-family: inherit !important;
+          pointer-events: none;
+          max-width: 220px;
+          white-space: normal !important;
+          word-break: break-word;
+        }
+        .jobs-map-tooltip::before { display:none !important; }
+        .leaflet-attribution-flag { display:none !important; }
+      `}),(0,t.jsx)("div",{ref:s,style:{height:"100%",width:"100%"}}),f>0&&(0,t.jsxs)("div",{className:"absolute top-3 left-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm border border-gray-100",children:["📍 ",f," offre",f>1?"s":""," localisée",f>1?"s":""]}),p&&(0,t.jsxs)("div",{className:"absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm z-[1001]",children:[(0,t.jsx)("div",{className:"w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2",children:(0,t.jsx)("div",{className:"h-full bg-violet-500 rounded-full transition-all",style:{width:`${Math.round(p.done/p.total*100)}%`}})}),(0,t.jsxs)("p",{className:"text-xs text-gray-500",children:["Géolocalisation ",p.done,"/",p.total]})]}),f>0&&(0,t.jsx)("div",{className:"absolute bottom-3 right-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 text-xs shadow-sm border border-gray-100 flex flex-col gap-1",children:Object.entries({todo:"📋 À explorer",applied:"🚀 Postulé",interview:"🤝 Entretien",offer:"🎉 Offre !"}).map(([e,o])=>(0,t.jsxs)("div",{className:"flex items-center gap-1.5",children:[(0,t.jsx)("div",{className:"w-2.5 h-2.5 rounded-full flex-shrink-0",style:{background:a[e]}}),(0,t.jsx)("span",{className:"text-gray-600",children:o})]},e))}),!p&&0===h&&(0,t.jsx)("div",{className:"absolute inset-0 flex items-center justify-center bg-gray-50 z-[1001] rounded-2xl",children:(0,t.jsx)("p",{className:"text-sm text-gray-400",children:"Aucune offre avec un lieu renseigné"})})]})}])},71400,e=>{e.v(t=>Promise.all(["static/chunks/0ls11j2txjbu0.js"].map(t=>e.l(t))).then(()=>t(32322)))}]);

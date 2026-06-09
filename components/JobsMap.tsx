@@ -159,8 +159,8 @@ export default function JobsMap({ jobs }: { jobs: Job[] }) {
 
         const tooltipHtml = items.slice(0, 6).map(i =>
           `<div style="padding:2px 0;line-height:1.4">
-            <span style="font-weight:700;font-size:12px">${i.job.title}</span><br>
-            <span style="color:#6b7280;font-size:11px">${i.job.company}${i.job.location ? ` · ${i.job.location}` : ''}</span>
+            <span style="font-weight:700;font-size:12px;white-space:normal;word-break:break-word;display:block">${i.job.title}</span>
+            <span style="color:#6b7280;font-size:11px;white-space:normal;display:block">${i.job.company}${i.job.location ? ` · ${i.job.location}` : ''}</span>
           </div>`
         ).join('<div style="border-top:1px solid #e5e7eb;margin:3px 0"></div>') +
           (items.length > 6 ? `<div style="color:#9ca3af;font-size:11px;padding-top:4px">+${items.length - 6} autres</div>` : '');
@@ -192,7 +192,9 @@ export default function JobsMap({ jobs }: { jobs: Job[] }) {
           box-shadow: 0 4px 20px rgba(0,0,0,.12) !important;
           font-family: inherit !important;
           pointer-events: none;
-          max-width: 260px;
+          max-width: 220px;
+          white-space: normal !important;
+          word-break: break-word;
         }
         .jobs-map-tooltip::before { display:none !important; }
         .leaflet-attribution-flag { display:none !important; }

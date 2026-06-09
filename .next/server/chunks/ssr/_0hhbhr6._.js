@@ -9,8 +9,8 @@ module.exports=[79215,a=>{"use strict";var b=a.i(87924),c=a.i(80826);let d={};as
             box-shadow:0 2px 8px rgba(0,0,0,.25);
             cursor:pointer;
           ">${g}</div>`,iconSize:[k,k],iconAnchor:[k/2,k/2]}),m=c.slice(0,6).map(a=>`<div style="padding:2px 0;line-height:1.4">
-            <span style="font-weight:700;font-size:12px">${a.job.title}</span><br>
-            <span style="color:#6b7280;font-size:11px">${a.job.company}${a.job.location?` \xb7 ${a.job.location}`:""}</span>
+            <span style="font-weight:700;font-size:12px;white-space:normal;word-break:break-word;display:block">${a.job.title}</span>
+            <span style="color:#6b7280;font-size:11px;white-space:normal;display:block">${a.job.company}${a.job.location?` \xb7 ${a.job.location}`:""}</span>
           </div>`).join('<div style="border-top:1px solid #e5e7eb;margin:3px 0"></div>')+(c.length>6?`<div style="color:#9ca3af;font-size:11px;padding-top:4px">+${c.length-6} autres</div>`:""),n=a.marker([d,e],{icon:l});n._isJobMarker=!0,n.bindTooltip(m,{direction:"top",offset:[0,-(k/2)-4],opacity:1,className:"jobs-map-tooltip"}),n.addTo(b)})})},[j]);let n=g.filter(a=>"archived"!==a.status&&a.location).length,o=j.length;return(0,b.jsxs)("div",{className:"relative rounded-2xl overflow-hidden border border-gray-100 shadow-sm",style:{height:480},children:[(0,b.jsx)("style",{children:`
         .jobs-map-tooltip {
           background: white !important;
@@ -20,7 +20,9 @@ module.exports=[79215,a=>{"use strict";var b=a.i(87924),c=a.i(80826);let d={};as
           box-shadow: 0 4px 20px rgba(0,0,0,.12) !important;
           font-family: inherit !important;
           pointer-events: none;
-          max-width: 260px;
+          max-width: 220px;
+          white-space: normal !important;
+          word-break: break-word;
         }
         .jobs-map-tooltip::before { display:none !important; }
         .leaflet-attribution-flag { display:none !important; }
