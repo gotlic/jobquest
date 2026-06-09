@@ -18,65 +18,85 @@ function cacheKey(url: string): string {
   }
 }
 
+const encoder = new TextEncoder();
+
+function sseChunk(data: Record<string, unknown>): Uint8Array {
+  return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+}
+
 export async function POST(req: NextRequest) {
+  let body: { url?: string };
   try {
-    const body = await req.json();
-    const url = body?.url;
-    if (!url) return NextResponse.json({ error: 'URL requise' }, { status: 400 });
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Corps de requête invalide' }, { status: 400 });
+  }
+  const url = body?.url;
+  if (!url) return NextResponse.json({ error: 'URL requise' }, { status: 400 });
 
-    const key = cacheKey(url);
+  const key = cacheKey(url);
 
-    // 1. Cache in-process
-    if (urlCache.has(key)) {
-      return NextResponse.json({ ...urlCache.get(key), url, _cached: true });
+  // 1. Cache in-process — réponse directe (pas besoin de SSE)
+  if (urlCache.has(key)) {
+    return NextResponse.json({ ...urlCache.get(key), url, _cached: true });
+  }
+
+  // 2. Déjà dans la base de données ?
+  try {
+    const db = await getDb();
+    const existing = db.prepare('SELECT * FROM jobs WHERE url = ? LIMIT 1').get(url) as Record<string, unknown> | undefined;
+    if (existing) {
+      const cached = {
+        title: existing.title,
+        company: existing.company,
+        location: existing.location,
+        remote: existing.remote,
+        start_date: existing.start_date,
+        salary: existing.salary,
+        contract_type: existing.contract_type,
+        summary: existing.summary,
+        contact_name: existing.contact_name,
+        contact_email: existing.contact_email,
+        contact_linkedin: existing.contact_linkedin,
+      };
+      urlCache.set(key, cached);
+      return NextResponse.json({ ...cached, url, _cached: true });
     }
+  } catch (dbErr) {
+    console.error('[analyze] db lookup error (non-blocking):', dbErr);
+  }
 
-    // 2. Déjà dans la base de données ?
-    try {
-      const db = await getDb();
-      const existing = db.prepare('SELECT * FROM jobs WHERE url = ? LIMIT 1').get(url) as Record<string, unknown> | undefined;
-      if (existing) {
-        const cached = {
-          title: existing.title,
-          company: existing.company,
-          location: existing.location,
-          remote: existing.remote,
-          start_date: existing.start_date,
-          salary: existing.salary,
-          contract_type: existing.contract_type,
-          summary: existing.summary,
-          contact_name: existing.contact_name,
-          contact_email: existing.contact_email,
-          contact_linkedin: existing.contact_linkedin,
-        };
-        urlCache.set(key, cached);
-        return NextResponse.json({ ...cached, url, _cached: true });
-      }
-    } catch (dbErr) {
-      console.error('[analyze] db lookup error (non-blocking):', dbErr);
-      // Continue vers l'appel IA même si la DB échoue
-    }
+  // 3. Appel IA — utilise SSE pour garder la connexion Passenger vivante
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        // Heartbeat immédiat pour maintenir la connexion
+        controller.enqueue(sseChunk({ status: 'fetching' }));
 
-    // 3. Appel IA
-    let pageContent = '';
-    try {
-      const response = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobSearchBot/1.0)' },
-        signal: AbortSignal.timeout(10000),
-      });
-      pageContent = await response.text();
-      pageContent = pageContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
-    } catch {
-      return NextResponse.json({ error: 'Impossible de lire cette URL' }, { status: 422 });
-    }
+        let pageContent = '';
+        try {
+          const response = await fetch(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobSearchBot/1.0)' },
+            signal: AbortSignal.timeout(10000),
+          });
+          pageContent = await response.text();
+          pageContent = pageContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
+        } catch {
+          controller.enqueue(sseChunk({ error: 'Impossible de lire cette URL', done: true }));
+          controller.close();
+          return;
+        }
 
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: `Tu analyses une offre d'emploi pour un outil de suivi de candidatures. Extrais les informations suivantes du contenu de la page et réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
+        // Heartbeat pendant l'appel IA
+        controller.enqueue(sseChunk({ status: 'analyzing' }));
+
+        const message = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          messages: [
+            {
+              role: 'user',
+              content: `Tu analyses une offre d'emploi pour un outil de suivi de candidatures. Extrais les informations suivantes du contenu de la page et réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
 
 URL: ${url}
 Contenu de la page: ${pageContent}
@@ -95,23 +115,35 @@ JSON attendu:
   "contact_email": "Email recruteur si mentionné (ou null)",
   "contact_linkedin": "Profil LinkedIn recruteur si mentionné (ou null)"
 }`,
-        },
-      ],
-    });
+            },
+          ],
+        });
 
-    const text = message.content[0].type === 'text' ? message.content[0].text : '';
-    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        const text = message.content[0].type === 'text' ? message.content[0].text : '';
+        const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 
-    try {
-      const data = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
-      urlCache.set(key, data);
-      return NextResponse.json({ ...data, url });
-    } catch {
-      return NextResponse.json({ error: 'Erreur parsing IA', raw: text }, { status: 500 });
-    }
-  } catch (e) {
-    console.error('[POST /api/analyze] error:', e);
-    return NextResponse.json({ error: 'Erreur serveur lors de l\'analyse' }, { status: 500 });
-  }
+        try {
+          const data = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+          urlCache.set(key, data);
+          controller.enqueue(sseChunk({ ...data, url, done: true }));
+        } catch {
+          controller.enqueue(sseChunk({ error: 'Erreur parsing IA', raw: text, done: true }));
+        }
+      } catch (e) {
+        console.error('[POST /api/analyze] error:', e);
+        controller.enqueue(sseChunk({ error: 'Erreur serveur lors de l\'analyse', done: true }));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no', // désactive le buffering nginx/apache
+    },
+  });
 }

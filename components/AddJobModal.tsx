@@ -57,23 +57,50 @@ export default function AddJobModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      const result = await res.json();
-      if (result.error) { setError(result.error); return; }
+      if (!res.ok || !res.body) {
+        setError('Erreur réseau');
+        return;
+      }
+
+      // Lire la réponse SSE pour garder la connexion active pendant l'appel IA
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let result: Record<string, unknown> | null = null;
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.done) result = data;
+              else if (data.error) { setError(data.error); return; }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      }
+
+      if (!result) { setError('Réponse incomplète'); return; }
       // Whitelist des champs autorisés depuis l'IA (network_connection est exclu)
       setData(prev => ({
         ...prev,
-        url: result.url ?? prev.url,
-        title: result.title ?? prev.title,
-        company: result.company ?? prev.company,
-        location: result.location ?? prev.location,
-        remote: result.remote ?? prev.remote,
-        start_date: result.start_date ?? prev.start_date,
-        salary: result.salary ?? prev.salary,
-        contract_type: result.contract_type ?? prev.contract_type,
-        summary: result.summary ?? prev.summary,
-        contact_name: result.contact_name ?? prev.contact_name,
-        contact_email: result.contact_email ?? prev.contact_email,
-        contact_linkedin: result.contact_linkedin ?? prev.contact_linkedin,
+        url: (result!.url as string) ?? prev.url,
+        title: (result!.title as string) ?? prev.title,
+        company: (result!.company as string) ?? prev.company,
+        location: (result!.location as string) ?? prev.location,
+        remote: (result!.remote as string) ?? prev.remote,
+        start_date: (result!.start_date as string) ?? prev.start_date,
+        salary: (result!.salary as string) ?? prev.salary,
+        contract_type: (result!.contract_type as string) ?? prev.contract_type,
+        summary: (result!.summary as string) ?? prev.summary,
+        contact_name: (result!.contact_name as string) ?? prev.contact_name,
+        contact_email: (result!.contact_email as string) ?? prev.contact_email,
+        contact_linkedin: (result!.contact_linkedin as string) ?? prev.contact_linkedin,
         // network_connection : laissé intact (zone libre des helpers)
       }));
       setAnalyzed(result._cached ? 'cached' : 'fresh');
