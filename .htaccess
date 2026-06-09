@@ -1,8 +1,1 @@
-# Augmente les timeouts pour les requêtes longues (appels IA ~30-40s)
-PassengerResponseBufferTimeout 120
-PassengerStartTimeout 120
-
-# Timeout Apache pour les requêtes longues
-<IfModule mod_reqtimeout.c>
-  RequestReadTimeout header=120 body=120
-</IfModule>
+# JobQuest
