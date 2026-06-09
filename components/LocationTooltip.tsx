@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 // Cache en mémoire pour éviter les appels répétés à Nominatim
 const geocodeCache: Record<string, { lat: number; lon: number } | null> = {};
@@ -27,15 +28,36 @@ export function LocationTooltip({ location, children }: { location: string; chil
     }
   }
 
-  // Bbox centrée sur la ville, ~1/4 de la France (zoom x4)
+  // Bbox France entière
   const iframeSrc = coords
-    ? (() => {
-        const dLon = 3.75;
-        const dLat = 2.75;
-        const bbox = `${coords.lon - dLon}%2C${coords.lat - dLat}%2C${coords.lon + dLon}%2C${coords.lat + dLat}`;
-        return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${coords.lat}%2C${coords.lon}`;
-      })()
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=-5.0%2C41.0%2C10.0%2C52.0&layer=mapnik&marker=${coords.lat}%2C${coords.lon}`
     : null;
+
+  const modal = visible && (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none"
+    >
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden pointer-events-none" style={{ width: 1280, height: 920 }}>
+        {iframeSrc ? (
+          <iframe
+            src={iframeSrc}
+            width={1280}
+            height={880}
+            scrolling="no"
+            style={{ border: 'none', display: 'block', pointerEvents: 'none' }}
+            title={`Carte — ${location}`}
+          />
+        ) : (
+          <div className="flex items-center justify-center text-sm text-gray-400" style={{ height: 880 }}>
+            {coords === undefined ? 'Localisation…' : 'Ville introuvable sur la carte'}
+          </div>
+        )}
+        <div className="px-4 py-3 text-base text-gray-700 font-medium border-t border-gray-100 flex items-center gap-2">
+          📍 {location}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <span
@@ -44,31 +66,9 @@ export function LocationTooltip({ location, children }: { location: string; chil
       onMouseLeave={() => setVisible(false)}
     >
       {children}
-
-      {visible && (
-        <div
-          className="absolute left-0 z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
-          style={{ bottom: 'calc(100% + 8px)', width: 320 }}
-        >
-          {iframeSrc ? (
-            <iframe
-              src={iframeSrc}
-              width={320}
-              height={220}
-              scrolling="no"
-              style={{ border: 'none', display: 'block', pointerEvents: 'none' }}
-              title={`Carte — ${location}`}
-            />
-          ) : (
-            <div className="flex items-center justify-center text-xs text-gray-400" style={{ height: 120 }}>
-              {coords === undefined ? 'Localisation…' : 'Ville introuvable sur la carte'}
-            </div>
-          )}
-          <div className="px-3 py-2 text-sm text-gray-700 font-medium border-t border-gray-100 flex items-center gap-1.5">
-            📍 {location}
-          </div>
-        </div>
-      )}
+      {typeof document !== 'undefined' && modal
+        ? createPortal(modal, document.body)
+        : null}
     </span>
   );
 }
