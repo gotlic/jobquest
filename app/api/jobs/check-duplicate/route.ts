@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     if (best) {
       return NextResponse.json(
-        { duplicate: best.job, score: Math.round(best.score * 100), reason: best.reason },
+        { duplicate: best.job, score: best.score, reason: best.reason },
         { status: 409 }
       );
     }
