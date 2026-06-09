@@ -116,7 +116,7 @@ export function isDuplicate(candidate: JobLike, existing: JobLike): DuplicateRes
   const finalScore = Math.min(1, combined + locationBonus);
 
   return {
-    isDuplicate: finalScore >= 0.55,
+    isDuplicate: finalScore >= 0.70,
     score: finalScore,
     reason: 'content',
   };
