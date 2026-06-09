@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
             signal: AbortSignal.timeout(10000),
           });
           pageContent = await response.text();
-          pageContent = pageContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
+          pageContent = pageContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 12000);
         } catch {
           controller.enqueue(sseChunk({ error: 'Impossible de lire cette URL', done: true }));
           controller.close();
@@ -106,6 +106,8 @@ export async function POST(req: NextRequest) {
             {
               role: 'user',
               content: `Tu analyses une offre d'emploi pour un outil de suivi de candidatures. Extrais les informations suivantes du contenu de la page et réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
+
+Note: si le lieu n'est pas explicite dans le contenu, cherche des indices dans le slug de l'URL (ex: "paris", "lyon", "bordeaux", "pierre-benite" dans l'URL indique Pierre-Bénite près de Lyon).
 
 URL: ${url}
 Contenu de la page: ${pageContent}
