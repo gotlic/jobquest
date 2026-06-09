@@ -36,9 +36,17 @@ export async function POST(req: NextRequest) {
 
   const key = cacheKey(url);
 
-  // 1. Cache in-process — réponse directe (pas besoin de SSE)
+  // Helper: réponse SSE one-shot (cache)
+  function sseOnce(data: Record<string, unknown>) {
+    const body = new ReadableStream({
+      start(ctrl) { ctrl.enqueue(sseChunk(data)); ctrl.close(); },
+    });
+    return new Response(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' } });
+  }
+
+  // 1. Cache in-process
   if (urlCache.has(key)) {
-    return NextResponse.json({ ...urlCache.get(key), url, _cached: true });
+    return sseOnce({ ...urlCache.get(key), url, _cached: true, done: true });
   }
 
   // 2. Déjà dans la base de données ?
@@ -60,7 +68,7 @@ export async function POST(req: NextRequest) {
         contact_linkedin: existing.contact_linkedin,
       };
       urlCache.set(key, cached);
-      return NextResponse.json({ ...cached, url, _cached: true });
+      return sseOnce({ ...cached, url, _cached: true, done: true });
     }
   } catch (dbErr) {
     console.error('[analyze] db lookup error (non-blocking):', dbErr);
