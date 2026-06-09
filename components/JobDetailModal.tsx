@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X, ExternalLink, MapPin, Calendar, DollarSign, User, Mail, Network, Clock, Send, Trash2, Archive, Pencil } from 'lucide-react';
+import { LocationTooltip } from '@/components/LocationTooltip';
 import { Job, Activity } from '@/lib/db';
 import AddJobModal from '@/components/AddJobModal';
 
@@ -203,8 +204,17 @@ export default function JobDetailModal({
 
             {/* Details grid */}
             <div className="grid grid-cols-2 gap-3">
+              {job.location && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><MapPin size={14} />Lieu</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    <LocationTooltip location={job.location}>
+                      <span className="underline decoration-dotted cursor-help">{job.location}</span>
+                    </LocationTooltip>
+                  </p>
+                </div>
+              )}
               {[
-                { icon: <MapPin size={14} />, label: 'Lieu', value: job.location },
                 { icon: <Calendar size={14} />, label: 'Début', value: job.start_date },
                 { icon: <DollarSign size={14} />, label: 'Salaire', value: job.salary },
                 { icon: null, label: 'Contrat', value: job.contract_type },

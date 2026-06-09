@@ -1,7 +1,6 @@
 'use client';
 
-import { Calendar, DollarSign, ExternalLink, User } from 'lucide-react';
-import { LocationTooltip } from './LocationTooltip';
+import { MapPin, Calendar, DollarSign, ExternalLink, User } from 'lucide-react';
 import { Job } from '@/lib/db';
 
 const priorityStyles: Record<string, string> = {
@@ -85,7 +84,11 @@ export default function JobCard({ job, onClick }: { job: Job; onClick: () => voi
       )}
 
       <div className="flex flex-wrap gap-2 text-xs text-gray-400">
-        {job.location && <LocationTooltip location={job.location} />}
+        {job.location && (
+          <span className="flex items-center gap-0.5">
+            <MapPin size={10} /> {job.location}
+          </span>
+        )}
         {job.salary && (
           <span className="flex items-center gap-0.5">
             <DollarSign size={10} /> {job.salary}

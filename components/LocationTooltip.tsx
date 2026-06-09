@@ -1,20 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin } from 'lucide-react';
 
 // Cache en mémoire pour éviter les appels répétés à Nominatim
 const geocodeCache: Record<string, { lat: number; lon: number } | null> = {};
 
-export function LocationTooltip({ location }: { location: string }) {
+export function LocationTooltip({ location, children }: { location: string; children: React.ReactNode }) {
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null | undefined>(undefined);
   const [visible, setVisible] = useState(false);
 
   async function geocode() {
-    if (coords !== undefined) return; // déjà tenté
-    const cached = geocodeCache[location];
-    if (cached !== undefined) { setCoords(cached); return; }
-
+    if (coords !== undefined) return;
+    if (location in geocodeCache) { setCoords(geocodeCache[location]); return; }
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`,
@@ -30,38 +27,39 @@ export function LocationTooltip({ location }: { location: string }) {
     }
   }
 
-  // Carte centrée sur la France entière (zoom 6), marqueur sur la ville
-  const mapUrl = coords
-    ? `https://staticmap.openstreetmap.de/staticmap.php?center=46.5,2.5&zoom=6&size=220x160&markers=${coords.lat},${coords.lon},red-pushpin`
+  // Bbox France entière pour une vue à l'échelle nationale
+  const iframeSrc = coords
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=-5.0%2C41.0%2C10.0%2C52.0&layer=mapnik&marker=${coords.lat}%2C${coords.lon}`
     : null;
 
   return (
     <span
-      className="relative flex items-center gap-0.5 cursor-default"
+      className="relative cursor-default"
       onMouseEnter={() => { setVisible(true); geocode(); }}
       onMouseLeave={() => setVisible(false)}
     >
-      <MapPin size={10} />
-      {location}
+      {children}
 
       {visible && (
-        <div className="absolute bottom-full left-0 mb-2 z-50 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
-          style={{ width: 220 }}>
-          {mapUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={mapUrl}
-              alt={`Carte — ${location}`}
-              width={220}
-              height={160}
-              className="block"
+        <div
+          className="absolute left-0 z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
+          style={{ bottom: 'calc(100% + 8px)', width: 320 }}
+        >
+          {iframeSrc ? (
+            <iframe
+              src={iframeSrc}
+              width={320}
+              height={220}
+              scrolling="no"
+              style={{ border: 'none', display: 'block', pointerEvents: 'none' }}
+              title={`Carte — ${location}`}
             />
           ) : (
-            <div className="flex items-center justify-center text-xs text-gray-400" style={{ height: 80 }}>
-              {coords === undefined ? '…' : 'Lieu introuvable'}
+            <div className="flex items-center justify-center text-xs text-gray-400" style={{ height: 120 }}>
+              {coords === undefined ? 'Localisation…' : 'Ville introuvable sur la carte'}
             </div>
           )}
-          <div className="px-2 py-1 text-xs text-gray-600 font-medium truncate border-t border-gray-100">
+          <div className="px-3 py-2 text-sm text-gray-700 font-medium border-t border-gray-100 flex items-center gap-1.5">
             📍 {location}
           </div>
         </div>
