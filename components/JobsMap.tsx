@@ -207,9 +207,12 @@ export default function JobsMap({ jobs }: { jobs: Job[] }) {
           box-shadow: 0 4px 20px rgba(0,0,0,.12) !important;
           font-family: inherit !important;
           pointer-events: none;
-          max-width: 220px;
+          min-width: 200px !important;
+          max-width: 240px !important;
+          width: max-content !important;
           white-space: normal !important;
-          word-break: break-word;
+          overflow-wrap: break-word !important;
+          word-break: normal !important;
         }
         .jobs-map-tooltip::before { display:none !important; }
       `}</style>

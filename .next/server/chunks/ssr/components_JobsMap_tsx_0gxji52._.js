@@ -10,9 +10,12 @@ module.exports=[79215,a=>{"use strict";var b=a.i(87924),c=a.i(80826);let d={};fu
           box-shadow: 0 4px 20px rgba(0,0,0,.12) !important;
           font-family: inherit !important;
           pointer-events: none;
-          max-width: 220px;
+          min-width: 200px !important;
+          max-width: 240px !important;
+          width: max-content !important;
           white-space: normal !important;
-          word-break: break-word;
+          overflow-wrap: break-word !important;
+          word-break: normal !important;
         }
         .jobs-map-tooltip::before { display:none !important; }
       `}),(0,b.jsx)("div",{ref:h,style:{height:"100%",width:"100%"}}),q>0&&(0,b.jsxs)("div",{className:"absolute top-3 left-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm border border-gray-100",children:["📍 ",q," offre",q>1?"s":""," localisée",q>1?"s":""]}),m&&(0,b.jsxs)("div",{className:"absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm z-[1001]",children:[(0,b.jsx)("div",{className:"w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2",children:(0,b.jsx)("div",{className:"h-full bg-violet-500 rounded-full transition-all",style:{width:`${Math.round(m.done/m.total*100)}%`}})}),(0,b.jsxs)("p",{className:"text-xs text-gray-500",children:["Géolocalisation ",m.done,"/",m.total]})]}),q>0&&!m&&(0,b.jsx)("div",{className:"absolute bottom-3 right-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 text-xs shadow-sm border border-gray-100 flex flex-col gap-1",children:Object.entries({todo:"📋 À explorer",applied:"🚀 Postulé",interview:"🤝 Entretien",offer:"🎉 Offre !"}).map(([a,c])=>(0,b.jsxs)("div",{className:"flex items-center gap-1.5",children:[(0,b.jsx)("div",{className:"w-2.5 h-2.5 rounded-full shrink-0",style:{background:g[a]}}),(0,b.jsx)("span",{className:"text-gray-600",children:c})]},a))}),!m&&0===a.filter(a=>"archived"!==a.status&&a.location).length&&(0,b.jsx)("div",{className:"absolute inset-0 flex items-center justify-center bg-gray-50 z-[1001] rounded-2xl",children:(0,b.jsx)("p",{className:"text-sm text-gray-400",children:"Aucune offre avec un lieu renseigné"})})]})}])}];
