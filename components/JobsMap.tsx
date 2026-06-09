@@ -5,11 +5,13 @@ import 'leaflet/dist/leaflet.css';
 import type { Job } from '@/lib/db';
 import type L from 'leaflet';
 
-/* ── Cache géocodage persistant (localStorage) ─────────────── */
+/* ── Cache géocodage persistant (localStorage) ──────────────── */
 const MEM: Record<string, { lat: number; lon: number } | null> = {};
+let cacheLoaded = false;
 
 function loadCache() {
-  if (typeof window === 'undefined') return;
+  if (cacheLoaded || typeof window === 'undefined') return;
+  cacheLoaded = true;
   try {
     const raw = localStorage.getItem('jq_geo_cache');
     if (raw) Object.assign(MEM, JSON.parse(raw));
@@ -38,7 +40,7 @@ async function geocode(location: string): Promise<{ lat: number; lon: number } |
   }
 }
 
-/* ── Clustering grille 0.5° (~50 km) ───────────────────────── */
+/* ── Clustering grille ~50 km ───────────────────────────────── */
 function clusterKey(lat: number, lon: number) {
   return `${(Math.round(lat * 2) / 2).toFixed(1)},${(Math.round(lon * 2) / 2).toFixed(1)}`;
 }
@@ -56,26 +58,93 @@ const STATUS_COLOR: Record<string, string> = {
 
 /* ── Composant ──────────────────────────────────────────────── */
 export default function JobsMap({ jobs }: { jobs: Job[] }) {
-  const mapRef  = useRef<HTMLDivElement>(null);
-  const mapInst = useRef<L.Map | null>(null);
-  const leaflet = useRef<typeof L | null>(null);
+  const mapRef     = useRef<HTMLDivElement>(null);
+  const mapInst    = useRef<L.Map | null>(null);
+  const leafletRef = useRef<typeof L | null>(null);
 
-  // Stockés en ref pour éviter la race condition map-init / geocoding
-  const geocodedRef = useRef<GeoJob[]>([]);
-
+  // geocoded en STATE → déclenche un re-render pour afficher le badge + redessiner
+  const [geocoded, setGeocoded] = useState<GeoJob[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [tick, setTick] = useState(0); // force re-render markers après init carte
+  // mapReady en STATE → déclenche le re-render qui dessinera les markers une fois la carte prête
+  const [mapReady, setMapReady] = useState(false);
 
-  /* ── Redessiner les markers ─────────────────────────────── */
-  function drawMarkers() {
-    const LL = leaflet.current;
+  /* ── Init Leaflet (une seule fois) ──────────────────────── */
+  useEffect(() => {
+    loadCache();
+    if (!mapRef.current || typeof window === 'undefined') return;
+
+    let destroyed = false;
+    import('leaflet').then(LL => {
+      if (destroyed || !mapRef.current || mapInst.current) return;
+      leafletRef.current = LL;
+
+      const map = LL.map(mapRef.current, {
+        center: [46.5, 2.5],
+        zoom: 6,
+        zoomControl: true,
+        scrollWheelZoom: true,
+        attributionControl: false,
+      });
+      LL.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      mapInst.current = map;
+      if (!destroyed) setMapReady(true); // déclenche le useEffect markers
+    });
+
+    return () => {
+      destroyed = true;
+      if (mapInst.current) { mapInst.current.remove(); mapInst.current = null; }
+      leafletRef.current = null;
+      setMapReady(false);
+    };
+  }, []);
+
+  /* ── Géocodage ──────────────────────────────────────────── */
+  useEffect(() => {
+    loadCache();
+    const active = jobs.filter(j => j.status !== 'archived' && j.location);
+    if (active.length === 0) { setGeocoded([]); return; }
+
+    const uniqueLocs = [...new Set(active.map(j => j.location!))];
+    const uncached   = uniqueLocs.filter(l => !(l in MEM));
+
+    let cancelled = false;
+
+    async function run() {
+      // Géocoder les nouvelles villes
+      if (uncached.length > 0) {
+        setProgress({ done: 0, total: uncached.length });
+        for (let i = 0; i < uncached.length; i++) {
+          if (cancelled) return;
+          await geocode(uncached[i]);
+          if (!cancelled) setProgress({ done: i + 1, total: uncached.length });
+          if (i < uncached.length - 1) await new Promise(r => setTimeout(r, 300));
+        }
+      }
+      if (cancelled) return;
+
+      // Construire la liste finale (tout est maintenant en MEM)
+      const results: GeoJob[] = [];
+      active.forEach(job => {
+        const c = MEM[job.location!];
+        if (c) results.push({ job, lat: c.lat, lon: c.lon });
+      });
+      setGeocoded(results);  // déclenche le re-render ET l'effet markers
+      setProgress(null);
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [jobs]);
+
+  /* ── Markers : déclenché quand geocoded OU mapReady change ─ */
+  useEffect(() => {
+    const LL  = leafletRef.current;
     const map = mapInst.current;
-    const geocoded = geocodedRef.current;
     if (!LL || !map || geocoded.length === 0) return;
 
-    // Supprimer les anciens
+    // Supprimer les anciens markers
     map.eachLayer(layer => {
-      if ((layer as unknown as { _jqMarker?: boolean })._jqMarker) map.removeLayer(layer);
+      if ((layer as unknown as { _jq?: boolean })._jq) map.removeLayer(layer);
     });
 
     // Clustering
@@ -89,19 +158,18 @@ export default function JobsMap({ jobs }: { jobs: Job[] }) {
     clusters.forEach(items => {
       const lat = items.reduce((s, i) => s + i.lat, 0) / items.length;
       const lon = items.reduce((s, i) => s + i.lon, 0) / items.length;
-      const n = items.length;
+      const n   = items.length;
 
-      // Couleur statut dominant
       const sc: Record<string, number> = {};
       items.forEach(i => { sc[i.job.status] = (sc[i.job.status] ?? 0) + 1; });
       const dominant = Object.entries(sc).sort((a, b) => b[1] - a[1])[0][0];
-      const color = STATUS_COLOR[dominant] ?? '#6b7280';
+      const color    = STATUS_COLOR[dominant] ?? '#6b7280';
+      const size     = n > 1 ? 36 : 26;
 
-      const size = n > 1 ? 36 : 26;
       const icon = LL.divIcon({
         className: '',
-        html: `<div style="background:${color};color:#fff;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:${n > 1 ? 13 : 11}px;font-weight:700;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer">${n}</div>`,
-        iconSize: [size, size],
+        html: `<div style="background:${color};color:#fff;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:${n > 1 ? 13 : 11}px;font-weight:700;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)">${n}</div>`,
+        iconSize:   [size, size],
         iconAnchor: [size / 2, size / 2],
       });
 
@@ -114,8 +182,8 @@ export default function JobsMap({ jobs }: { jobs: Job[] }) {
         ).join('<div style="border-top:1px solid #e5e7eb;margin:3px 0"></div>') +
         (items.length > 6 ? `<div style="color:#9ca3af;font-size:11px;padding-top:4px">+${items.length - 6} autres</div>` : '');
 
-      const marker = LL.marker([lat, lon], { icon }) as L.Marker & { _jqMarker?: boolean };
-      marker._jqMarker = true;
+      const marker = LL.marker([lat, lon], { icon }) as L.Marker & { _jq?: boolean };
+      marker._jq = true;
       marker.bindTooltip(tooltipHtml, {
         direction: 'top',
         offset: [0, -(size / 2) - 4],
@@ -124,79 +192,9 @@ export default function JobsMap({ jobs }: { jobs: Job[] }) {
       });
       marker.addTo(map);
     });
-  }
+  }, [geocoded, mapReady]); // ← les deux déclencheurs
 
-  /* ── Init Leaflet (une seule fois) ──────────────────────── */
-  useEffect(() => {
-    loadCache();
-    if (!mapRef.current || typeof window === 'undefined') return;
-
-    import('leaflet').then(LL => {
-      if (!mapRef.current || mapInst.current) return;
-      leaflet.current = LL;
-
-      const map = LL.map(mapRef.current, {
-        center: [46.5, 2.5],
-        zoom: 6,
-        zoomControl: true,
-        scrollWheelZoom: true,
-        attributionControl: false,
-      });
-
-      LL.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-      mapInst.current = map;
-
-      // Si géocodage déjà terminé avant l'init carte, dessiner maintenant
-      drawMarkers();
-      setTick(t => t + 1);
-    });
-
-    return () => {
-      if (mapInst.current) { mapInst.current.remove(); mapInst.current = null; }
-      leaflet.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /* ── Géocodage ──────────────────────────────────────────── */
-  useEffect(() => {
-    loadCache();
-    const active = jobs.filter(j => j.status !== 'archived' && j.location);
-    if (active.length === 0) return;
-
-    const uniqueLocs = [...new Set(active.map(j => j.location!))];
-
-    // Ceux déjà en cache → résultat immédiat
-    const uncached = uniqueLocs.filter(l => !(l in MEM));
-
-    async function run() {
-      if (uncached.length > 0) setProgress({ done: 0, total: uncached.length });
-
-      for (let i = 0; i < uncached.length; i++) {
-        await geocode(uncached[i]);
-        setProgress({ done: i + 1, total: uncached.length });
-        if (i < uncached.length - 1) await new Promise(r => setTimeout(r, 300));
-      }
-
-      // Construire la liste finale
-      const results: GeoJob[] = [];
-      active.forEach(job => {
-        const c = MEM[job.location!];
-        if (c) results.push({ job, lat: c.lat, lon: c.lon });
-      });
-      geocodedRef.current = results;
-      setProgress(null);
-      drawMarkers();
-    }
-
-    run();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs]);
-
-  // Redessiner quand la carte est prête et geocoded déjà rempli
-  useEffect(() => { drawMarkers(); }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const locCount = geocodedRef.current.length;
+  const locCount = geocoded.length;
 
   return (
     <div className="relative rounded-2xl overflow-hidden border border-gray-100 shadow-sm" style={{ height: 480 }}>
@@ -214,7 +212,6 @@ export default function JobsMap({ jobs }: { jobs: Job[] }) {
           word-break: break-word;
         }
         .jobs-map-tooltip::before { display:none !important; }
-        .leaflet-attribution-flag { display:none !important; }
       `}</style>
 
       <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
