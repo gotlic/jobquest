@@ -27,9 +27,14 @@ export function LocationTooltip({ location, children }: { location: string; chil
     }
   }
 
-  // Bbox France entière pour une vue à l'échelle nationale
+  // Bbox centrée sur la ville, ~1/4 de la France (zoom x4)
   const iframeSrc = coords
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=-5.0%2C41.0%2C10.0%2C52.0&layer=mapnik&marker=${coords.lat}%2C${coords.lon}`
+    ? (() => {
+        const dLon = 3.75;
+        const dLat = 2.75;
+        const bbox = `${coords.lon - dLon}%2C${coords.lat - dLat}%2C${coords.lon + dLon}%2C${coords.lat + dLat}`;
+        return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${coords.lat}%2C${coords.lon}`;
+      })()
     : null;
 
   return (
