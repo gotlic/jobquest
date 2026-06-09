@@ -87,10 +87,18 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        // Heartbeat pendant l'appel IA
+        // Heartbeat pendant l'appel IA — toutes les 8s pour éviter le timeout Passenger
         controller.enqueue(sseChunk({ status: 'analyzing' }));
 
-        const message = await client.messages.create({
+        let heartbeatCount = 0;
+        const heartbeatTimer = setInterval(() => {
+          heartbeatCount++;
+          try { controller.enqueue(sseChunk({ status: 'thinking', tick: heartbeatCount })); } catch { /* ignore */ }
+        }, 8000);
+
+        let message;
+        try {
+          message = await client.messages.create({
           model: 'claude-sonnet-4-6',
           max_tokens: 1024,
           messages: [
@@ -117,7 +125,10 @@ JSON attendu:
 }`,
             },
           ],
-        });
+          });
+        } finally {
+          clearInterval(heartbeatTimer);
+        }
 
         const text = message.content[0].type === 'text' ? message.content[0].text : '';
         const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
