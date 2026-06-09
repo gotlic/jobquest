@@ -143,7 +143,7 @@ export default function AddJobModal({
       });
       if (res.status === 409) {
         const body = await res.json();
-        setDuplicate({ ...body, reason: body.reason ?? 'content' });
+        setDuplicate({ job: body.duplicate, score: body.score, reason: body.reason ?? 'content' });
         setSaving(false);
         return;
       }
