@@ -1,6 +1,6 @@
 'use client';
 
-import { MapPin, Calendar, DollarSign, ExternalLink, User, Wifi, WifiOff, Laptop } from 'lucide-react';
+import { MapPin, Calendar, DollarSign, ExternalLink, User } from 'lucide-react';
 import { Job } from '@/lib/db';
 
 const priorityStyles: Record<string, string> = {
@@ -14,9 +14,6 @@ const priorityLabel: Record<string, string> = {
 };
 
 const remoteIcons: Record<string, React.ReactNode> = {
-  full: <span title="Full remote" className="text-emerald-500"><Wifi size={12} /></span>,
-  partial: <span title="Hybride" className="text-blue-500"><Laptop size={12} /></span>,
-  no: <span title="Présentiel" className="text-gray-400"><WifiOff size={12} /></span>,
 };
 
 // Mapping mots-clés → emoji métier
@@ -92,7 +89,6 @@ export default function JobCard({ job, onClick }: { job: Job; onClick: () => voi
             <MapPin size={10} /> {job.location}
           </span>
         )}
-        {job.remote && remoteIcons[job.remote]}
         {job.salary && (
           <span className="flex items-center gap-0.5">
             <DollarSign size={10} /> {job.salary}

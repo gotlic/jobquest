@@ -256,19 +256,6 @@ export default function AddJobModal({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Remote</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
-                value={data.remote ?? ''}
-                onChange={e => setData(prev => ({ ...prev, remote: e.target.value }))}
-              >
-                <option value="">— Choisir —</option>
-                <option value="full">Full remote 🌍</option>
-                <option value="partial">Hybride 🏠/🏢</option>
-                <option value="no">Présentiel 🏢</option>
-              </select>
-            </div>
           </div>
 
           {field('Résumé IA', 'summary', <Sparkles size={12} />, 'Résumé de l\'offre en 30-50 mots...', true)}

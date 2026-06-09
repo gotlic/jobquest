@@ -208,7 +208,6 @@ export default function JobDetailModal({
                 { icon: <Calendar size={14} />, label: 'Début', value: job.start_date },
                 { icon: <DollarSign size={14} />, label: 'Salaire', value: job.salary },
                 { icon: null, label: 'Contrat', value: job.contract_type },
-                { icon: null, label: 'Remote', value: job.remote === 'full' ? '🌍 Full remote' : job.remote === 'partial' ? '🏠 Hybride' : job.remote === 'no' ? '🏢 Présentiel' : null },
                 { icon: <User size={14} />, label: 'Ajouté par', value: job.added_by },
               ].filter(d => d.value).map(d => (
                 <div key={d.label} className="bg-gray-50 rounded-xl p-3">
