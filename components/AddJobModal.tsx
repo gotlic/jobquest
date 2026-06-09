@@ -39,6 +39,8 @@ export default function AddJobModal({
   const [analyzed, setAnalyzed] = useState<false | 'fresh' | 'cached'>(false);
   const [error, setError] = useState('');
   const [duplicate, setDuplicate] = useState<{ job: Record<string, unknown>; score: number; reason: string } | null>(null);
+  const [spaDetected, setSpaDetected] = useState(false);
+  const [pastedText, setPastedText] = useState('');
   const [data, setData] = useState<JobData>(
     isEdit ? { ...editJob } : {
       url: '', title: '', company: '', location: '', remote: '', start_date: '',
@@ -51,11 +53,14 @@ export default function AddJobModal({
     if (!url.trim()) return;
     setAnalyzing(true);
     setError('');
+    setSpaDetected(false);
     try {
+      const body: Record<string, string> = { url };
+      if (pastedText.trim()) body.text = pastedText.trim();
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(body),
       });
       if (!res.ok || !res.body) {
         setError('Erreur réseau');
@@ -77,9 +82,10 @@ export default function AddJobModal({
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
-              if (data.done) result = data;
-              else if (data.error) { setError(data.error); return; }
+              const chunk = JSON.parse(line.slice(6));
+              if (chunk._spa) { setSpaDetected(true); setAnalyzing(false); return; }
+              if (chunk.done) result = chunk;
+              else if (chunk.error) { setError(chunk.error); return; }
             } catch { /* ignore parse errors */ }
           }
         }
@@ -223,6 +229,21 @@ export default function AddJobModal({
             )}
             {analyzed === 'cached' && (
               <p className="text-xs text-emerald-600 mt-2 font-medium">⚡ Résultat depuis le cache — aucun crédit utilisé.</p>
+            )}
+            {spaDetected && (
+              <div className="mt-3">
+                <p className="text-xs text-amber-700 font-semibold mb-2">
+                  ⚠️ Cette page utilise JavaScript — le contenu n'est pas accessible automatiquement.<br />
+                  <span className="font-normal">Copiez le texte de l'offre depuis la page et collez-le ci-dessous, puis cliquez à nouveau sur Analyser.</span>
+                </p>
+                <textarea
+                  className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50 resize-none"
+                  rows={6}
+                  placeholder="Coller ici le texte complet de l'offre d'emploi…"
+                  value={pastedText}
+                  onChange={e => setPastedText(e.target.value)}
+                />
+              </div>
             )}
           </div>
 

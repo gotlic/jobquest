@@ -25,13 +25,14 @@ function sseChunk(data: Record<string, unknown>): Uint8Array {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { url?: string };
+  let body: { url?: string; text?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Corps de requête invalide' }, { status: 400 });
   }
   const url = body?.url;
+  const manualText = body?.text?.trim() ?? '';
   if (!url) return NextResponse.json({ error: 'URL requise' }, { status: 400 });
 
   const key = cacheKey(url);
@@ -81,16 +82,51 @@ export async function POST(req: NextRequest) {
         // Heartbeat immédiat pour maintenir la connexion
         controller.enqueue(sseChunk({ status: 'fetching' }));
 
-        let pageContent = '';
+        // Extraire les paramètres utiles de l'URL pour aider l'IA
+        let urlHints = '';
         try {
+          const parsed = new URL(url);
+          const params: Record<string, string> = {};
+          parsed.searchParams.forEach((v, k) => { params[k] = v; });
+          const slug = parsed.pathname;
+          urlHints = `Slug URL: ${slug}\nParamètres URL: ${JSON.stringify(params)}`;
+        } catch { /* ignore */ }
+
+        // Si l'utilisateur a collé le texte manuellement (page SPA), on l'utilise directement
+        let pageContent = manualText;
+        let isSpa = false;
+
+        if (!manualText) try {
           const response = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobSearchBot/1.0)' },
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'fr-FR,fr;q=0.9',
+            },
             signal: AbortSignal.timeout(10000),
           });
-          pageContent = await response.text();
-          pageContent = pageContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 12000);
+          const raw = await response.text();
+          pageContent = raw.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+                           .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+                           .replace(/<[^>]+>/g, ' ')
+                           .replace(/\s+/g, ' ')
+                           .trim()
+                           .slice(0, 12000);
+
+          // Détecter une SPA / page protégée : peu de texte lisible ou marqueurs connus
+          const readableWords = (pageContent.match(/\b[a-zA-ZÀ-ÿ]{3,}\b/g) || []).length;
+          if (readableWords < 150 || raw.includes('window.ddjskey') || raw.includes('angular-output') || (raw.includes('__NEXT_DATA__') && readableWords < 300)) {
+            isSpa = true;
+          }
         } catch {
           controller.enqueue(sseChunk({ error: 'Impossible de lire cette URL', done: true }));
+          controller.close();
+          return;
+        }
+
+        // SPA détectée : demander à l'utilisateur de coller le texte manuellement
+        if (isSpa) {
+          controller.enqueue(sseChunk({ _spa: true, url, done: true }));
           controller.close();
           return;
         }
@@ -99,17 +135,20 @@ export async function POST(req: NextRequest) {
         // ce qui envoie immédiatement du trafic et évite le timeout Passenger
         controller.enqueue(sseChunk({ status: 'analyzing' }));
 
+        const spaNote = `Note: si le lieu n'est pas explicite dans le contenu, cherche des indices dans le slug de l'URL (ex: "paris", "lyon", "pierre-benite" → Pierre-Bénite près de Lyon).`;
+
         const anthropicStream = client.messages.stream({
           model: 'claude-sonnet-4-6',
           max_tokens: 1024,
           messages: [
             {
               role: 'user',
-              content: `Tu analyses une offre d'emploi pour un outil de suivi de candidatures. Extrais les informations suivantes du contenu de la page et réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
+              content: `Tu analyses une offre d'emploi pour un outil de suivi de candidatures. Extrais les informations suivantes et réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explication.
 
-Note: si le lieu n'est pas explicite dans le contenu, cherche des indices dans le slug de l'URL (ex: "paris", "lyon", "bordeaux", "pierre-benite" dans l'URL indique Pierre-Bénite près de Lyon).
+${spaNote}
 
 URL: ${url}
+${urlHints}
 Contenu de la page: ${pageContent}
 
 JSON attendu:
@@ -120,7 +159,7 @@ JSON attendu:
   "remote": "full / partial / no / null",
   "start_date": "Date de début si mentionnée (ou null)",
   "salary": "Fourchette salariale si mentionnée (ou null)",
-  "contract_type": "CDI / CDD / Stage / Freelance / etc (ou null)",
+  "contract_type": "CDI / CDD / Stage / Alternance / Freelance / etc (ou null)",
   "summary": "Résumé du poste en 30-50 mots maximum, percutant et informatif",
   "contact_name": "Prénom Nom du recruteur si mentionné (ou null)",
   "contact_email": "Email recruteur si mentionné (ou null)",
