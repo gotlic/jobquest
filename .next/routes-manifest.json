@@ -113,6 +113,12 @@
       "namedRegex": "^/api/cvs(?:/)?$"
     },
     {
+      "page": "/api/feed",
+      "regex": "^/api/feed(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/feed(?:/)?$"
+    },
+    {
       "page": "/api/jobs",
       "regex": "^/api/jobs(?:/)?$",
       "routeKeys": {},

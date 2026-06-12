@@ -9,6 +9,7 @@
   "/api/cv-categories/route": "/api/cv-categories",
   "/api/cvs/[id]/route": "/api/cvs/[id]",
   "/api/cvs/route": "/api/cvs",
+  "/api/feed/route": "/api/feed",
   "/api/jobs/[id]/route": "/api/jobs/[id]",
   "/api/jobs/check-duplicate/route": "/api/jobs/check-duplicate",
   "/api/jobs/route": "/api/jobs",

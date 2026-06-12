@@ -14,6 +14,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
     "@types/leaflet": "^1.9.21",
+    "fast-xml-parser": "^5.8.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.17.0",
     "next": "16.2.7",

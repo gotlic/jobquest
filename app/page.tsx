@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import { Plus, LayoutGrid, BarChart3, Search, RefreshCw, User } from 'lucide-react';
+import { Plus, LayoutGrid, BarChart3, Search, RefreshCw, User, Telescope } from 'lucide-react';
 import Link from 'next/link';
 import { Job, Activity } from '@/lib/db';
 import JobCard from '@/components/JobCard';
 import AddJobModal from '@/components/AddJobModal';
 import JobDetailModal from '@/components/JobDetailModal';
+import ExploreView from '@/components/ExploreView';
 const JobsMap = lazy(() => import('@/components/JobsMap'));
 
 type JobWithActivities = Job & { activities: Activity[] };
@@ -32,7 +33,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobWithActivities | null>(null);
-  const [view, setView] = useState<'kanban' | 'stats'>('kanban');
+  const [view, setView] = useState<'kanban' | 'stats' | 'explore'>('kanban');
+  const [exploreJob, setExploreJob] = useState<Record<string, string> | null>(null);
   const [search, setSearch] = useState('');
 
   const loadJobs = useCallback(async () => {
@@ -139,6 +141,12 @@ export default function Home() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${view === 'stats' ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <BarChart3 size={14} /> Stats
+              </button>
+              <button
+                onClick={() => setView('explore')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${view === 'explore' ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <Telescope size={14} /> Explorer
               </button>
             </div>
             <Link
@@ -331,6 +339,11 @@ export default function Home() {
             </div>
           </div>
         )}
+        {view === 'explore' && (
+          <ExploreView
+            onAddToKanban={(job) => setExploreJob(job as Record<string, string>)}
+          />
+        )}
       </main>
 
       {/* Empty state */}
@@ -348,6 +361,14 @@ export default function Home() {
             </button>
           </div>
         </div>
+      )}
+
+      {exploreJob && (
+        <AddJobModal
+          onClose={() => setExploreJob(null)}
+          onSave={async (job) => { await handleAddJob(job); setExploreJob(null); }}
+          editJob={exploreJob as Parameters<typeof AddJobModal>[0]['editJob']}
+        />
       )}
 
       {showAdd && (
