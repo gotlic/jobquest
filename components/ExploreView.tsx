@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, ExternalLink, Plus, X, Search, Loader2, ChevronRight, Settings, Eye, EyeOff, Ban } from 'lucide-react';
+import { RefreshCw, ExternalLink, Plus, X, Search, Loader2, ChevronRight, Settings, Eye, EyeOff, Ban, MapPin, Check } from 'lucide-react';
 import type { FeedItem } from '@/app/api/feed/route';
+import { CONTINENTS, countryNameFr, countryNameEn } from '@/lib/regions';
 
-const KW_KEY   = 'jq_explore_keywords';
-const LOC_KEY  = 'jq_explore_location';
-const CRED_KEY = 'jq_feed_credentials';
+const KW_KEY      = 'jq_explore_keywords';
+const COUNTRY_KEY = 'jq_explore_countries';
+const CRED_KEY    = 'jq_feed_credentials';
 const DEFAULT_KEYWORDS = ['ingénieur', 'alternance'];
-const DEFAULT_LOCATION = 'France';
+const DEFAULT_COUNTRIES = ['FR'];
 
 type Creds = { serpKey: string; clientId: string; clientSecret: string };
 const EMPTY_CREDS: Creds = { serpKey: '', clientId: '', clientSecret: '' };
@@ -20,12 +21,39 @@ function loadKeywords(): string[] {
 function saveKeywords(kw: string[]) {
   try { localStorage.setItem(KW_KEY, JSON.stringify(kw)); } catch { /* */ }
 }
-function loadLocation(): string {
-  try { return localStorage.getItem(LOC_KEY) || DEFAULT_LOCATION; } catch { /* */ }
-  return DEFAULT_LOCATION;
+function loadCountries(): string[] {
+  try { const r = localStorage.getItem(COUNTRY_KEY); if (r) { const a = JSON.parse(r); if (Array.isArray(a) && a.length) return a; } } catch { /* */ }
+  return DEFAULT_COUNTRIES;
 }
-function saveLocation(loc: string) {
-  try { localStorage.setItem(LOC_KEY, loc); } catch { /* */ }
+function saveCountries(codes: string[]) {
+  try { localStorage.setItem(COUNTRY_KEY, JSON.stringify(codes)); } catch { /* */ }
+}
+
+/** Zones envoyées à l'API : continent entier (ou quasi) → label continent, sinon pays un à un */
+function computeZones(sel: Set<string>): string[] {
+  const zones: string[] = [];
+  for (const cont of CONTINENTS) {
+    const selected = cont.countries.filter(c => sel.has(c));
+    if (selected.length === 0) continue;
+    if (selected.length === cont.countries.length || selected.length > 6) zones.push(cont.labelEn);
+    else zones.push(...selected.map(countryNameEn));
+  }
+  return zones.slice(0, 8);
+}
+
+/** Résumé lisible de la sélection pour le bouton */
+function zoneSummary(sel: Set<string>): string {
+  const parts: string[] = [];
+  for (const cont of CONTINENTS) {
+    const selected = cont.countries.filter(c => sel.has(c));
+    if (selected.length === 0) continue;
+    const missing = cont.countries.length - selected.length;
+    if (missing === 0) parts.push(cont.labelFr);
+    else if (selected.length <= 3) parts.push(selected.map(countryNameFr).join(', '));
+    else if (missing <= 3) parts.push(`${cont.labelFr} sauf ${cont.countries.filter(c => !sel.has(c)).map(countryNameFr).join(', ')}`);
+    else parts.push(`${cont.labelFr} (${selected.length} pays)`);
+  }
+  return parts.join(' · ') || 'Choisir une zone…';
 }
 function loadCreds(): Creds {
   try {
@@ -82,8 +110,9 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
   refreshSignal?: number;
 }) {
   const [keywords, setKeywords]     = useState<string[]>(DEFAULT_KEYWORDS);
-  const [location, setLocation]     = useState(DEFAULT_LOCATION);
-  const [locDraft, setLocDraft]     = useState(DEFAULT_LOCATION);
+  const [countries, setCountries]   = useState<string[]>(DEFAULT_COUNTRIES);
+  const [showZones, setShowZones]   = useState(false);
+  const [zoneDraft, setZoneDraft]   = useState<Set<string>>(new Set(DEFAULT_COUNTRIES));
   const [creds, setCreds]           = useState<Creds>(EMPTY_CREDS);
   const [newKw, setNewKw]           = useState('');
   const [editingKw, setEditingKw]   = useState(false);
@@ -105,20 +134,18 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
 
   useEffect(() => {
     setKeywords(loadKeywords());
-    const l = loadLocation();
-    setLocation(l);
-    setLocDraft(l);
+    setCountries(loadCountries());
     const c = loadCreds();
     setCreds(c);
     setDraft(c);
   }, []);
 
-  function commitLocation() {
-    const l = locDraft.trim() || DEFAULT_LOCATION;
-    setLocDraft(l);
-    if (l === location) return;
-    setLocation(l);
-    saveLocation(l);
+  function commitZones() {
+    const codes = [...zoneDraft];
+    if (codes.length === 0) return; // au moins un pays
+    setCountries(codes);
+    saveCountries(codes);
+    setShowZones(false);
   }
 
   /** Bloque une offre précise (pas de confirmation) */
@@ -156,9 +183,11 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
     setError('');
     setWarnings([]);
     try {
+      const selSet = new Set(countries);
       const params = new URLSearchParams({
         q: query,
-        loc: location,
+        zones: computeZones(selSet).join(','),
+        sel: countries.join(','),
         ...(creds.serpKey ? { serp: creds.serpKey } : {}),
         ...(creds.clientId && creds.clientSecret ? { cid: creds.clientId, cs: creds.clientSecret } : {}),
         ...(force ? { force: '1' } : {}),
@@ -176,7 +205,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
     } finally {
       setLoading(false);
     }
-  }, [query, location, creds]);
+  }, [query, countries, creds]);
 
   // refreshSignal : incrémenté par le parent après un ajout au Kanban →
   // refetch (le serveur exclut désormais l'offre ajoutée)
@@ -313,18 +342,14 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
             <h3 className="font-bold text-gray-900 flex items-center gap-2">
               <Search size={16} className="text-violet-500" /> Mots-clés
             </h3>
-            <div className="flex items-center gap-1.5 text-sm">
-              <span className="text-gray-400">📍</span>
-              <input
-                className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50 w-36"
-                title="Zone de recherche (pays, ville, région)"
-                placeholder="France"
-                value={locDraft}
-                onChange={e => setLocDraft(e.target.value)}
-                onBlur={commitLocation}
-                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              />
-            </div>
+            <button
+              onClick={() => { setZoneDraft(new Set(countries)); setShowZones(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:border-violet-300 hover:text-violet-700 bg-gray-50 transition-colors max-w-sm"
+              title="Choisir les pays / continents de recherche"
+            >
+              <MapPin size={14} className="text-violet-500 shrink-0" />
+              <span className="truncate">{zoneSummary(new Set(countries))}</span>
+            </button>
           </div>
           <div className="flex items-center gap-2">
             {cachedAt && (
@@ -490,6 +515,94 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
           {visible.length} offre{visible.length > 1 ? 's' : ''} de la semaine, triée{visible.length > 1 ? 's' : ''} par date
           {items.length > visible.length && ` · ${items.length - visible.length} masquée${items.length - visible.length > 1 ? 's' : ''}`}
         </p>
+      )}
+
+      {/* Modal : où chercher (continents / pays) */}
+      {showZones && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <MapPin size={18} className="text-violet-500" /> Où chercher ?
+              </h3>
+              <button onClick={() => setShowZones(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <X size={18} className="text-gray-500" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-4 space-y-5 flex-1">
+              {CONTINENTS.map(cont => {
+                const selCount = cont.countries.filter(c => zoneDraft.has(c)).length;
+                const all = selCount === cont.countries.length;
+                return (
+                  <div key={cont.id}>
+                    <div className="flex items-center justify-between mb-2">
+                      <button
+                        onClick={() => {
+                          const next = new Set(zoneDraft);
+                          if (all) cont.countries.forEach(c => next.delete(c));
+                          else cont.countries.forEach(c => next.add(c));
+                          setZoneDraft(next);
+                        }}
+                        className="flex items-center gap-2 font-bold text-sm text-gray-800 hover:text-violet-700 transition-colors"
+                      >
+                        <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                          all ? 'bg-violet-600 border-violet-600' : selCount > 0 ? 'bg-violet-200 border-violet-400' : 'border-gray-300'
+                        }`}>
+                          {all && <Check size={13} className="text-white" />}
+                          {!all && selCount > 0 && <span className="w-2 h-2 bg-violet-600 rounded-sm" />}
+                        </span>
+                        {cont.labelFr}
+                      </button>
+                      <span className="text-xs text-gray-400">{selCount}/{cont.countries.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {cont.countries.map(code => {
+                        const on = zoneDraft.has(code);
+                        return (
+                          <button
+                            key={code}
+                            onClick={() => {
+                              const next = new Set(zoneDraft);
+                              if (on) next.delete(code); else next.add(code);
+                              setZoneDraft(next);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                              on ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            }`}
+                          >
+                            {countryNameFr(code)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-400 truncate flex-1">
+                {zoneDraft.size === 0 ? 'Sélectionnez au moins un pays' : zoneSummary(zoneDraft)}
+              </p>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => setShowZones(false)}
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={commitZones}
+                  disabled={zoneDraft.size === 0}
+                  className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:from-violet-700 hover:to-indigo-700 disabled:opacity-40 transition-all"
+                >
+                  Valider
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de confirmation : blocage entreprise */}

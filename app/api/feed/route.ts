@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { ALL_CODES, CONTINENTS, CONTINENT_LABELS_EN, countryNameEn, countryNameFr } from '@/lib/regions';
 
 export type FeedItem = {
   id: string;
@@ -13,6 +14,8 @@ export type FeedItem = {
   salary: string;
   contract_type: string;
   source: string;
+  /** Zone de recherche dont provient l'offre (interne, pour le filtre pays) */
+  zone?: string;
 };
 
 // Cache in-process par clé de recherche (6h)
@@ -57,6 +60,34 @@ function applyBlocklist(items: FeedItem[], bl: Blocklist): FeedItem[] {
     !bl.kanbanKeys.has(normKey(`${i.title} ${i.company}`)) &&
     !bl.kanbanUrls.has(i.url.split('?')[0].toLowerCase().replace(/\/$/, ''))
   );
+}
+
+/* ── Détection du pays d'une offre depuis son champ localisation ── */
+
+function normLoc(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Matchers triés par longueur décroissante (évite Niger ⊂ Nigeria, Georgia ⊂ United States…)
+const COUNTRY_MATCHERS: { code: string; re: RegExp }[] = ALL_CODES
+  .flatMap(code => {
+    const names = [...new Set([countryNameFr(code), countryNameEn(code)])];
+    return names.map(n => ({ code, name: normLoc(n) }));
+  })
+  .sort((a, b) => b.name.length - a.name.length)
+  .map(({ code, name }) => ({
+    code,
+    re: new RegExp(`(^|[^a-z])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^a-z])`),
+  }));
+
+/** Retourne le code pays détecté dans une chaîne de localisation, ou null */
+function detectCountry(location: string): string | null {
+  if (!location) return null;
+  const loc = normLoc(location);
+  for (const m of COUNTRY_MATCHERS) {
+    if (m.re.test(loc)) return m.code;
+  }
+  return null;
 }
 
 /** Convertit une date relative ("il y a 3 jours") ou ISO en timestamp ms. 0 si inconnue. */
@@ -164,7 +195,8 @@ async function fetchLinkedIn(q: string, location: string): Promise<FeedItem[]> {
   const res = await fetch(`https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params}`, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+      // en : LinkedIn renvoie alors "Ville, Région, Pays" → détection du pays fiable
+      'Accept-Language': 'en-US,en;q=0.9',
     },
     signal: AbortSignal.timeout(12000),
   });
@@ -265,30 +297,42 @@ async function fetchGoogleJobs(q: string, apiKey: string, location: string): Pro
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const q     = sp.get('q') ?? 'ingénieur alternance';
-  const loc   = (sp.get('loc') ?? 'France').trim() || 'France';
   const force = sp.get('force') === '1';
+  // Zones de recherche : continents ("Europe") et/ou pays ("Switzerland"), calculées côté client
+  const zones = (sp.get('zones') ?? 'France').split(',').map(z => z.trim()).filter(Boolean).slice(0, 8);
+  // Pays sélectionnés (codes ISO) — filtre appliqué aux résultats ; vide = pas de filtre
+  const sel   = new Set((sp.get('sel') ?? '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean));
   const ftCid    = sp.get('cid') ?? '';
   const ftSecret = sp.get('cs') ?? '';
   // Clé SerpAPI : fournie par le client OU configurée côté serveur (.env.local)
   const serpKey  = sp.get('serp') || process.env.SERPAPI_KEY || '';
-  // France Travail n'a de sens que pour une recherche en France
-  const useFT = !!(ftCid && ftSecret) && /france/i.test(loc);
-
-  // LinkedIn ne nécessite aucune clé → toujours disponible
+  // France Travail n'a de sens que si la France est dans la sélection
+  const franceSelected = sel.size === 0 ? zones.some(z => /france/i.test(z)) : sel.has('FR');
+  const useFT = !!(ftCid && ftSecret) && franceSelected;
 
   const blocklist = await loadBlocklist();
 
-  const key = `${ftCid}|${serpKey.slice(0, 8)}|${loc.toLowerCase()}|${q.toLowerCase().trim()}`;
+  const key = `${ftCid}|${serpKey.slice(0, 8)}|${zones.join('+').toLowerCase()}|${[...sel].sort().join('')}|${q.toLowerCase().trim()}`;
   const cached = cache.get(key);
   if (!force && cached && Date.now() - cached.at < TTL) {
     return NextResponse.json({ items: applyBlocklist(cached.items, blocklist), cachedAt: cached.at, cached: true });
   }
 
-  const sources: { name: string; promise: Promise<FeedItem[]> }[] = [
-    { name: 'LinkedIn', promise: fetchLinkedIn(q, loc) },
-  ];
-  if (serpKey) sources.push({ name: 'Google Jobs', promise: fetchGoogleJobs(q, serpKey, loc) });
-  if (useFT)   sources.push({ name: 'France Travail', promise: fetchFranceTravail(q, ftCid, ftSecret) });
+  // Tag chaque résultat avec sa zone d'origine (sert de fallback pays au filtre)
+  const tagged = (p: Promise<FeedItem[]>, zone: string) => p.then(items => items.map(i => ({ ...i, zone })));
+
+  // LinkedIn (gratuit) : une recherche par zone, continents acceptés
+  const sources: { name: string; promise: Promise<FeedItem[]> }[] = zones.map(z => ({
+    name: `LinkedIn ${z}`,
+    promise: tagged(fetchLinkedIn(q, z), z),
+  }));
+  // SerpAPI (quota 250/mois) : uniquement sur les zones pays, 3 max
+  if (serpKey) {
+    zones.filter(z => !CONTINENT_LABELS_EN.has(z)).slice(0, 3).forEach(z => {
+      sources.push({ name: `Google Jobs ${z}`, promise: tagged(fetchGoogleJobs(q, serpKey, z), z) });
+    });
+  }
+  if (useFT) sources.push({ name: 'France Travail', promise: tagged(fetchFranceTravail(q, ftCid, ftSecret), 'France') });
 
   const errors: string[] = [];
   const results = await Promise.allSettled(sources.map(s => s.promise));
@@ -308,7 +352,26 @@ export async function GET(req: NextRequest) {
   // Garder uniquement la semaine : date connue ET récente, ou date inconnue
   // (Google Jobs est déjà filtré semaine côté API, on tolère ses dates manquantes)
   const weekAgo = Date.now() - WEEK_MS;
-  const fresh = items.filter(i => i.postedTs === 0 || i.postedTs >= weekAgo);
+  let fresh = items.filter(i => i.postedTs === 0 || i.postedTs >= weekAgo);
+
+  // Filtre pays : si une sélection existe et ne couvre pas tout le référentiel
+  if (sel.size > 0 && sel.size < ALL_CODES.length) {
+    const codeByEn = new Map(ALL_CODES.map(c => [countryNameEn(c), c]));
+    const contByEn = new Map(CONTINENTS.map(c => [c.labelEn, c]));
+    fresh = fresh.filter(i => {
+      // 1. Pays détecté dans la localisation → décision directe
+      const detected = detectCountry(i.location);
+      if (detected) return sel.has(detected);
+      // 2. Zone de recherche = pays précis → l'offre vient forcément de ce pays
+      const zoneCode = i.zone ? codeByEn.get(i.zone) : undefined;
+      if (zoneCode) return sel.has(zoneCode);
+      // 3. Zone = continent, pays indétectable : on ne garde que si le continent
+      //    est sélectionné en entier (aucune exclusion à vérifier)
+      const cont = i.zone ? contByEn.get(i.zone) : undefined;
+      if (cont) return cont.countries.every(c => sel.has(c));
+      return true;
+    });
+  }
 
   // Dédupliquer par titre+entreprise normalisés (les sources se recoupent)
   const seen = new Set<string>();
