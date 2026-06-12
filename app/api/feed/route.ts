@@ -146,23 +146,88 @@ async function fetchFranceTravail(q: string, clientId: string, clientSecret: str
   });
 }
 
+/* ── LinkedIn (endpoint public invité — gratuit, mondial) ───── */
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
+}
+
+async function fetchLinkedIn(q: string, location: string): Promise<FeedItem[]> {
+  const params = new URLSearchParams({
+    keywords: q,
+    location,
+    f_TPR: 'r604800', // annonces des 7 derniers jours
+    start: '0',
+  });
+  const res = await fetch(`https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params}`, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+    },
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!res.ok) throw new Error(`LinkedIn ${res.status}`);
+  const raw = await res.text();
+
+  // Une carte par <li> — parsing par carte pour garder les champs alignés
+  return raw.split(/<li>/).slice(1).map(card => {
+    const pick = (re: RegExp) => card.match(re)?.[1]?.trim() ?? '';
+    const title    = decodeEntities(pick(/base-search-card__title">\s*([^<]+?)\s*</));
+    const company  = decodeEntities(
+      pick(/base-search-card__subtitle">\s*<a[^>]*>\s*([^<]+?)\s*</) ||
+      pick(/base-search-card__subtitle">\s*([^<]+?)\s*</)
+    );
+    const loc      = decodeEntities(pick(/job-search-card__location">\s*([^<]+?)\s*</));
+    const date     = pick(/datetime="([^"]+)"/);
+    const linkRaw  = pick(/base-card__full-link[^"]*"\s+href="([^"]+)"/);
+    const url      = decodeEntities(linkRaw).split('?')[0];
+
+    return {
+      id: `li-${url}`,
+      title,
+      company,
+      location: loc,
+      url,
+      summary: '',
+      pubDate: date,
+      postedTs: parsePostedTs(date),
+      salary: '',
+      contract_type: '',
+      source: 'LinkedIn',
+    };
+  }).filter(i => i.title && i.url);
+}
+
 /* ── SerpAPI / Google Jobs ──────────────────────────────────── */
 
-async function fetchGoogleJobs(q: string, apiKey: string): Promise<FeedItem[]> {
-  const params = new URLSearchParams({
+async function fetchGoogleJobs(q: string, apiKey: string, location: string): Promise<FeedItem[]> {
+  const isFrance = /france/i.test(location);
+
+  async function call(params: URLSearchParams): Promise<Record<string, unknown>> {
+    const res = await fetch(`https://serpapi.com/search.json?${params}`, {
+      signal: AbortSignal.timeout(20000),
+    });
+    return res.json();
+  }
+
+  const base = {
     engine: 'google_jobs',
-    q,
-    google_domain: 'google.fr',
-    gl: 'fr',
+    google_domain: isFrance ? 'google.fr' : 'google.com',
+    ...(isFrance ? { gl: 'fr' } : {}),
     hl: 'fr',
-    location: 'France',
     chips: 'date_posted:week', // uniquement les annonces de la semaine
     api_key: apiKey,
-  });
-  const res = await fetch(`https://serpapi.com/search.json?${params}`, {
-    signal: AbortSignal.timeout(20000),
-  });
-  const data = await res.json();
+  };
+
+  let data = await call(new URLSearchParams({ ...base, q, location }));
+
+  // SerpAPI ne connaît pas tous les lieux : fallback en mettant le lieu dans la requête
+  if (data.error && /unsupported.*location/i.test(String(data.error))) {
+    data = await call(new URLSearchParams({ ...base, q: `${q} ${location}` }));
+  }
+
   if (data.error) {
     const msg = String(data.error);
     if (/invalid api key/i.test(msg)) throw new Error('SERP_AUTH');
@@ -200,29 +265,33 @@ async function fetchGoogleJobs(q: string, apiKey: string): Promise<FeedItem[]> {
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const q     = sp.get('q') ?? 'ingénieur alternance';
+  const loc   = (sp.get('loc') ?? 'France').trim() || 'France';
   const force = sp.get('force') === '1';
   const ftCid    = sp.get('cid') ?? '';
   const ftSecret = sp.get('cs') ?? '';
   // Clé SerpAPI : fournie par le client OU configurée côté serveur (.env.local)
   const serpKey  = sp.get('serp') || process.env.SERPAPI_KEY || '';
+  // France Travail n'a de sens que pour une recherche en France
+  const useFT = !!(ftCid && ftSecret) && /france/i.test(loc);
 
-  if (!serpKey && (!ftCid || !ftSecret)) {
-    return NextResponse.json({ items: [], error: 'NO_CREDENTIALS' });
-  }
+  // LinkedIn ne nécessite aucune clé → toujours disponible
 
   const blocklist = await loadBlocklist();
 
-  const key = `${ftCid}|${serpKey.slice(0, 8)}|${q.toLowerCase().trim()}`;
+  const key = `${ftCid}|${serpKey.slice(0, 8)}|${loc.toLowerCase()}|${q.toLowerCase().trim()}`;
   const cached = cache.get(key);
   if (!force && cached && Date.now() - cached.at < TTL) {
     return NextResponse.json({ items: applyBlocklist(cached.items, blocklist), cachedAt: cached.at, cached: true });
   }
 
+  const sources: { name: string; promise: Promise<FeedItem[]> }[] = [
+    { name: 'LinkedIn', promise: fetchLinkedIn(q, loc) },
+  ];
+  if (serpKey) sources.push({ name: 'Google Jobs', promise: fetchGoogleJobs(q, serpKey, loc) });
+  if (useFT)   sources.push({ name: 'France Travail', promise: fetchFranceTravail(q, ftCid, ftSecret) });
+
   const errors: string[] = [];
-  const results = await Promise.allSettled([
-    serpKey ? fetchGoogleJobs(q, serpKey) : Promise.resolve([]),
-    ftCid && ftSecret ? fetchFranceTravail(q, ftCid, ftSecret) : Promise.resolve([]),
-  ]);
+  const results = await Promise.allSettled(sources.map(s => s.promise));
 
   const items: FeedItem[] = [];
   results.forEach((r, idx) => {
@@ -232,7 +301,7 @@ export async function GET(req: NextRequest) {
       if (msg === 'SERP_AUTH') errors.push('Clé SerpAPI invalide');
       else if (msg === 'SERP_QUOTA') errors.push('Quota SerpAPI épuisé (250/mois)');
       else if (msg.includes('Auth FT')) errors.push('Identifiants France Travail invalides');
-      else errors.push(idx === 0 ? `Google Jobs : ${msg}` : `France Travail : ${msg}`);
+      else errors.push(`${sources[idx].name} : ${msg}`);
     }
   });
 

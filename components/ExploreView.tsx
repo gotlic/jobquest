@@ -5,8 +5,10 @@ import { RefreshCw, ExternalLink, Plus, X, Search, Loader2, ChevronRight, Settin
 import type { FeedItem } from '@/app/api/feed/route';
 
 const KW_KEY   = 'jq_explore_keywords';
+const LOC_KEY  = 'jq_explore_location';
 const CRED_KEY = 'jq_feed_credentials';
 const DEFAULT_KEYWORDS = ['ingénieur', 'alternance'];
+const DEFAULT_LOCATION = 'France';
 
 type Creds = { serpKey: string; clientId: string; clientSecret: string };
 const EMPTY_CREDS: Creds = { serpKey: '', clientId: '', clientSecret: '' };
@@ -17,6 +19,13 @@ function loadKeywords(): string[] {
 }
 function saveKeywords(kw: string[]) {
   try { localStorage.setItem(KW_KEY, JSON.stringify(kw)); } catch { /* */ }
+}
+function loadLocation(): string {
+  try { return localStorage.getItem(LOC_KEY) || DEFAULT_LOCATION; } catch { /* */ }
+  return DEFAULT_LOCATION;
+}
+function saveLocation(loc: string) {
+  try { localStorage.setItem(LOC_KEY, loc); } catch { /* */ }
 }
 function loadCreds(): Creds {
   try {
@@ -73,6 +82,8 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
   refreshSignal?: number;
 }) {
   const [keywords, setKeywords]     = useState<string[]>(DEFAULT_KEYWORDS);
+  const [location, setLocation]     = useState(DEFAULT_LOCATION);
+  const [locDraft, setLocDraft]     = useState(DEFAULT_LOCATION);
   const [creds, setCreds]           = useState<Creds>(EMPTY_CREDS);
   const [newKw, setNewKw]           = useState('');
   const [editingKw, setEditingKw]   = useState(false);
@@ -94,10 +105,21 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
 
   useEffect(() => {
     setKeywords(loadKeywords());
+    const l = loadLocation();
+    setLocation(l);
+    setLocDraft(l);
     const c = loadCreds();
     setCreds(c);
     setDraft(c);
   }, []);
+
+  function commitLocation() {
+    const l = locDraft.trim() || DEFAULT_LOCATION;
+    setLocDraft(l);
+    if (l === location) return;
+    setLocation(l);
+    saveLocation(l);
+  }
 
   /** Bloque une offre précise (pas de confirmation) */
   async function ignoreOffer(item: FeedItem) {
@@ -136,6 +158,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
     try {
       const params = new URLSearchParams({
         q: query,
+        loc: location,
         ...(creds.serpKey ? { serp: creds.serpKey } : {}),
         ...(creds.clientId && creds.clientSecret ? { cid: creds.clientId, cs: creds.clientSecret } : {}),
         ...(force ? { force: '1' } : {}),
@@ -153,7 +176,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
     } finally {
       setLoading(false);
     }
-  }, [query, creds]);
+  }, [query, location, creds]);
 
   // refreshSignal : incrémenté par le parent après un ajout au Kanban →
   // refetch (le serveur exclut désormais l'offre ajoutée)
@@ -286,9 +309,23 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
       {/* Header mots-clés */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2">
-            <Search size={16} className="text-violet-500" /> Mots-clés
-          </h3>
+          <div className="flex items-center gap-4">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+              <Search size={16} className="text-violet-500" /> Mots-clés
+            </h3>
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-gray-400">📍</span>
+              <input
+                className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50 w-36"
+                title="Zone de recherche (pays, ville, région)"
+                placeholder="France"
+                value={locDraft}
+                onChange={e => setLocDraft(e.target.value)}
+                onBlur={commitLocation}
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              />
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             {cachedAt && (
               <span className="text-xs text-gray-400">Mis à jour {formatAge(new Date(cachedAt).toISOString())}</span>
