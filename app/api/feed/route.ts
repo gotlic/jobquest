@@ -25,26 +25,37 @@ function normKey(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 }
 
-/** Charge la blocklist (entreprises et offres masquées) depuis la base */
-async function loadBlocklist(): Promise<{ companies: Set<string>; offers: Set<string> }> {
+type Blocklist = { companies: Set<string>; offers: Set<string>; kanbanKeys: Set<string>; kanbanUrls: Set<string> };
+
+/** Charge la blocklist + les offres déjà dans le Kanban depuis la base */
+async function loadBlocklist(): Promise<Blocklist> {
   const companies = new Set<string>();
   const offers = new Set<string>();
+  const kanbanKeys = new Set<string>();
+  const kanbanUrls = new Set<string>();
   try {
     const db = await getDb();
     const rows = db.prepare('SELECT kind, value FROM feed_blocklist').all() as { kind: string; value: string }[];
     rows.forEach(r => (r.kind === 'company' ? companies : offers).add(r.value));
+    // Les offres déjà ajoutées au Kanban ne doivent plus être proposées
+    const jobs = db.prepare('SELECT title, company, url FROM jobs').all() as { title: string; company: string; url: string | null }[];
+    jobs.forEach(j => {
+      kanbanKeys.add(normKey(`${j.title} ${j.company}`));
+      if (j.url) kanbanUrls.add(j.url.split('?')[0].toLowerCase().replace(/\/$/, ''));
+    });
   } catch (e) {
     console.error('[feed] blocklist load error (non-blocking):', e);
   }
-  return { companies, offers };
+  return { companies, offers, kanbanKeys, kanbanUrls };
 }
 
-/** Retire les offres dont l'entreprise ou l'offre elle-même est bloquée */
-function applyBlocklist(items: FeedItem[], bl: { companies: Set<string>; offers: Set<string> }): FeedItem[] {
-  if (bl.companies.size === 0 && bl.offers.size === 0) return items;
+/** Retire les offres bloquées (entreprise/offre) et celles déjà dans le Kanban */
+function applyBlocklist(items: FeedItem[], bl: Blocklist): FeedItem[] {
   return items.filter(i =>
     !bl.companies.has(normKey(i.company)) &&
-    !bl.offers.has(normKey(`${i.title} ${i.company}`))
+    !bl.offers.has(normKey(`${i.title} ${i.company}`)) &&
+    !bl.kanbanKeys.has(normKey(`${i.title} ${i.company}`)) &&
+    !bl.kanbanUrls.has(i.url.split('?')[0].toLowerCase().replace(/\/$/, ''))
   );
 }
 

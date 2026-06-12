@@ -35,6 +35,7 @@ export default function Home() {
   const [selectedJob, setSelectedJob] = useState<JobWithActivities | null>(null);
   const [view, setView] = useState<'kanban' | 'stats' | 'explore'>('kanban');
   const [exploreJob, setExploreJob] = useState<Record<string, string> | null>(null);
+  const [exploreRefresh, setExploreRefresh] = useState(0);
   const [search, setSearch] = useState('');
 
   const loadJobs = useCallback(async () => {
@@ -342,6 +343,7 @@ export default function Home() {
         {view === 'explore' && (
           <ExploreView
             onAddToKanban={(job) => setExploreJob(job as Record<string, string>)}
+            refreshSignal={exploreRefresh}
           />
         )}
       </main>
@@ -366,7 +368,7 @@ export default function Home() {
       {exploreJob && (
         <AddJobModal
           onClose={() => setExploreJob(null)}
-          onSave={async (job) => { await handleAddJob(job); setExploreJob(null); }}
+          onSave={async (job) => { await handleAddJob(job); setExploreJob(null); setExploreRefresh(n => n + 1); }}
           editJob={exploreJob as Parameters<typeof AddJobModal>[0]['editJob']}
         />
       )}

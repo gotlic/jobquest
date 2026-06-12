@@ -68,8 +68,9 @@ const SOURCE_STYLE: Record<string, string> = {
   'APEC':           'bg-violet-50 text-violet-600',
 };
 
-export default function ExploreView({ onAddToKanban }: {
+export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
   onAddToKanban: (job: Partial<Record<string, string>>) => void;
+  refreshSignal?: number;
 }) {
   const [keywords, setKeywords]     = useState<string[]>(DEFAULT_KEYWORDS);
   const [creds, setCreds]           = useState<Creds>(EMPTY_CREDS);
@@ -154,7 +155,9 @@ export default function ExploreView({ onAddToKanban }: {
     }
   }, [query, creds]);
 
-  useEffect(() => { fetchFeed(); }, [fetchFeed]);
+  // refreshSignal : incrémenté par le parent après un ajout au Kanban →
+  // refetch (le serveur exclut désormais l'offre ajoutée)
+  useEffect(() => { fetchFeed(); }, [fetchFeed, refreshSignal]);
 
   function addKeyword() {
     const kw = newKw.trim();
