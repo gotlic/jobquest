@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, ExternalLink, Plus, X, Search, Loader2, ChevronRight, Settings, Eye, EyeOff } from 'lucide-react';
 import type { FeedItem } from '@/app/api/feed/route';
 
-const KW_KEY   = 'jq_explore_keywords';
-const CRED_KEY = 'jq_feed_credentials';
+const KW_KEY     = 'jq_explore_keywords';
+const CRED_KEY   = 'jq_feed_credentials';
+const IGNORE_KEY = 'jq_ignored_offers';
 const DEFAULT_KEYWORDS = ['ingénieur', 'alternance'];
 
 type Creds = { serpKey: string; clientId: string; clientSecret: string };
@@ -30,6 +31,18 @@ function loadCreds(): Creds {
 }
 function saveCreds(c: Creds) {
   try { localStorage.setItem(CRED_KEY, JSON.stringify(c)); } catch { /* */ }
+}
+
+/** Clé stable d'une offre (titre+entreprise normalisés) — les ids changent entre fetchs */
+function offerKey(item: Pick<FeedItem, 'title' | 'company'>): string {
+  return `${item.title} ${item.company}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+function loadIgnored(): Set<string> {
+  try { const r = localStorage.getItem(IGNORE_KEY); if (r) return new Set(JSON.parse(r)); } catch { /* */ }
+  return new Set();
+}
+function saveIgnored(s: Set<string>) {
+  try { localStorage.setItem(IGNORE_KEY, JSON.stringify([...s])); } catch { /* */ }
 }
 
 function formatAge(dateStr: string): string {
@@ -81,13 +94,22 @@ export default function ExploreView({ onAddToKanban }: {
   const [cachedAt, setCachedAt] = useState<number | null>(null);
   // null = pas encore su ; true = le serveur n'a aucune clé → écran de config
   const [needsConfig, setNeedsConfig] = useState<boolean | null>(null);
+  const [ignored, setIgnored] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setKeywords(loadKeywords());
+    setIgnored(loadIgnored());
     const c = loadCreds();
     setCreds(c);
     setDraft(c);
   }, []);
+
+  function ignoreOffer(item: FeedItem) {
+    const next = new Set(ignored);
+    next.add(offerKey(item));
+    setIgnored(next);
+    saveIgnored(next);
+  }
 
   const query = keywords.join(' ');
 
@@ -141,6 +163,7 @@ export default function ExploreView({ onAddToKanban }: {
   }
 
   const draftValid = !!(draft.serpKey || (draft.clientId && draft.clientSecret));
+  const visible = items.filter(i => !ignored.has(offerKey(i)));
 
   // ── Écran de configuration (uniquement si le serveur n'a aucune clé) ──
   if (needsConfig === true || showConfig) {
@@ -317,16 +340,18 @@ export default function ExploreView({ onAddToKanban }: {
         </div>
       )}
 
-      {!loading && !error && items.length === 0 && (
+      {!loading && !error && visible.length === 0 && (
         <div className="text-center py-16 text-gray-400">
           <p className="text-3xl mb-2">🔍</p>
-          <p className="text-sm">Aucune offre trouvée pour ces mots-clés</p>
+          <p className="text-sm">
+            {items.length > 0 ? 'Toutes les offres trouvées ont été ignorées' : 'Aucune offre trouvée pour ces mots-clés'}
+          </p>
         </div>
       )}
 
       {/* Liste */}
       <div className="space-y-3">
-        {items.map(item => (
+        {visible.map(item => (
           <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:border-violet-200 hover:shadow-md transition-all group">
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
@@ -364,10 +389,17 @@ export default function ExploreView({ onAddToKanban }: {
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors mr-auto"
               >
                 <ExternalLink size={12} /> Voir l'offre
               </a>
+              <button
+                onClick={() => ignoreOffer(item)}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-500 rounded-xl text-xs font-semibold hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                title="Ne plus afficher cette offre"
+              >
+                <EyeOff size={13} /> Ignorer
+              </button>
               <button
                 onClick={() => onAddToKanban({
                   url:           item.url,
@@ -387,9 +419,10 @@ export default function ExploreView({ onAddToKanban }: {
         ))}
       </div>
 
-      {items.length > 0 && (
+      {visible.length > 0 && (
         <p className="text-center text-xs text-gray-400 pb-4">
-          {items.length} offre{items.length > 1 ? 's' : ''} de la semaine, triée{items.length > 1 ? 's' : ''} par date
+          {visible.length} offre{visible.length > 1 ? 's' : ''} de la semaine, triée{visible.length > 1 ? 's' : ''} par date
+          {items.length > visible.length && ` · ${items.length - visible.length} ignorée${items.length - visible.length > 1 ? 's' : ''}`}
         </p>
       )}
     </div>
