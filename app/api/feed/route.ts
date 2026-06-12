@@ -17,7 +17,9 @@ export type FeedItem = {
 const cache = new Map<string, { items: FeedItem[]; at: number }>();
 const TTL = 6 * 60 * 60 * 1000;
 
-// Token France Travail (expire après 1490s ~25min)
+/* ── France Travail ─────────────────────────────────────────── */
+
+// Token France Travail (expire après ~25min)
 let ftToken: { value: string; expiresAt: number } | null = null;
 
 async function getFTToken(clientId: string, clientSecret: string): Promise<string> {
@@ -41,22 +43,12 @@ async function getFTToken(clientId: string, clientSecret: string): Promise<strin
 
 async function fetchFranceTravail(q: string, clientId: string, clientSecret: string): Promise<FeedItem[]> {
   const token = await getFTToken(clientId, clientSecret);
-  const params = new URLSearchParams({
-    motsCles: q,
-    range: '0-49',
-    sort: '1', // tri par date
-  });
+  const params = new URLSearchParams({ motsCles: q, range: '0-49', sort: '1' });
   const res = await fetch(`https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search?${params}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    },
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(15000),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`FT API ${res.status}: ${err.slice(0, 200)}`);
-  }
+  if (!res.ok) throw new Error(`FT API ${res.status}`);
   const data = await res.json();
   const offres: Record<string, unknown>[] = data.resultats ?? [];
 
@@ -64,9 +56,8 @@ async function fetchFranceTravail(q: string, clientId: string, clientSecret: str
     const lieu = o.lieuTravail as Record<string, unknown> | undefined;
     const entreprise = o.entreprise as Record<string, unknown> | undefined;
     const salaire = o.salaire as Record<string, unknown> | undefined;
-
     return {
-      id: String(o.id ?? ''),
+      id: `ft-${o.id}`,
       title: String(o.intitule ?? ''),
       company: String(entreprise?.nom ?? ''),
       location: String(lieu?.libelle ?? ''),
@@ -80,33 +71,110 @@ async function fetchFranceTravail(q: string, clientId: string, clientSecret: str
   });
 }
 
-export async function GET(req: NextRequest) {
-  const q           = req.nextUrl.searchParams.get('q') ?? 'ingénieur alternance';
-  const force       = req.nextUrl.searchParams.get('force') === '1';
-  const clientId    = req.nextUrl.searchParams.get('cid') ?? '';
-  const clientSecret = req.nextUrl.searchParams.get('cs') ?? '';
-  const key = `${clientId}::${q.toLowerCase().trim()}`;
+/* ── SerpAPI / Google Jobs ──────────────────────────────────── */
 
-  if (!clientId || !clientSecret) {
+async function fetchGoogleJobs(q: string, apiKey: string): Promise<FeedItem[]> {
+  const params = new URLSearchParams({
+    engine: 'google_jobs',
+    q,
+    google_domain: 'google.fr',
+    gl: 'fr',
+    hl: 'fr',
+    location: 'France',
+    api_key: apiKey,
+  });
+  const res = await fetch(`https://serpapi.com/search.json?${params}`, {
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await res.json();
+  if (data.error) {
+    const msg = String(data.error);
+    if (/invalid api key/i.test(msg)) throw new Error('SERP_AUTH');
+    if (/run out of searches/i.test(msg)) throw new Error('SERP_QUOTA');
+    // "hasn't returned any results" = recherche vide, pas une erreur
+    if (/returned any results/i.test(msg)) return [];
+    throw new Error(`SerpAPI: ${msg.slice(0, 150)}`);
+  }
+  const jobs: Record<string, unknown>[] = data.jobs_results ?? [];
+
+  return jobs.map(j => {
+    const ext = j.detected_extensions as Record<string, unknown> | undefined;
+    const applyOptions = j.apply_options as { title?: string; link?: string }[] | undefined;
+    const link = applyOptions?.[0]?.link
+      ?? String((j.related_links as { link?: string }[] | undefined)?.[0]?.link ?? '')
+      ?? '';
+    return {
+      id: `gj-${j.job_id ?? link}`,
+      title: String(j.title ?? ''),
+      company: String(j.company_name ?? ''),
+      location: String(j.location ?? '').replace(/^via .*$/i, '').trim(),
+      url: link || String(j.share_link ?? ''),
+      summary: String(j.description ?? '').slice(0, 300),
+      pubDate: String(ext?.posted_at ?? ''), // format relatif "il y a 3 jours"
+      salary: String(ext?.salary ?? ''),
+      contract_type: String(ext?.schedule_type ?? ''),
+      source: String(j.via ?? 'Google Jobs').replace(/^via\s+/i, ''),
+    };
+  }).filter(i => i.title && i.url);
+}
+
+/* ── Route ──────────────────────────────────────────────────── */
+
+export async function GET(req: NextRequest) {
+  const sp = req.nextUrl.searchParams;
+  const q     = sp.get('q') ?? 'ingénieur alternance';
+  const force = sp.get('force') === '1';
+  const ftCid    = sp.get('cid') ?? '';
+  const ftSecret = sp.get('cs') ?? '';
+  const serpKey  = sp.get('serp') ?? '';
+
+  if (!serpKey && (!ftCid || !ftSecret)) {
     return NextResponse.json({ items: [], error: 'NO_CREDENTIALS' });
   }
 
+  const key = `${ftCid}|${serpKey.slice(0, 8)}|${q.toLowerCase().trim()}`;
   const cached = cache.get(key);
   if (!force && cached && Date.now() - cached.at < TTL) {
     return NextResponse.json({ items: cached.items, cachedAt: cached.at, cached: true });
   }
 
-  try {
-    const items = await fetchFranceTravail(q, clientId, clientSecret);
-    cache.set(key, { items, at: Date.now() });
-    return NextResponse.json({ items, cachedAt: Date.now(), cached: false });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[feed]', msg);
-    const isAuth = msg.includes('Auth FT') || msg.includes('401');
-    return NextResponse.json(
-      { items: [], error: isAuth ? 'INVALID_CREDENTIALS' : msg },
-      { status: isAuth ? 401 : 500 }
-    );
+  const errors: string[] = [];
+  const results = await Promise.allSettled([
+    serpKey ? fetchGoogleJobs(q, serpKey) : Promise.resolve([]),
+    ftCid && ftSecret ? fetchFranceTravail(q, ftCid, ftSecret) : Promise.resolve([]),
+  ]);
+
+  const items: FeedItem[] = [];
+  results.forEach((r, idx) => {
+    if (r.status === 'fulfilled') items.push(...r.value);
+    else {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      if (msg === 'SERP_AUTH') errors.push('Clé SerpAPI invalide');
+      else if (msg === 'SERP_QUOTA') errors.push('Quota SerpAPI épuisé (250/mois)');
+      else if (msg.includes('Auth FT')) errors.push('Identifiants France Travail invalides');
+      else errors.push(idx === 0 ? `Google Jobs : ${msg}` : `France Travail : ${msg}`);
+    }
+  });
+
+  // Dédupliquer par titre+entreprise normalisés (les deux sources se recoupent)
+  const seen = new Set<string>();
+  const unique = items.filter(i => {
+    const k = `${i.title} ${i.company}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  // Si tout a échoué → erreur ; sinon résultats + warnings éventuels
+  if (unique.length === 0 && errors.length > 0) {
+    return NextResponse.json({ items: [], error: errors.join(' · ') }, { status: 502 });
   }
+
+  cache.set(key, { items: unique, at: Date.now() });
+  return NextResponse.json({
+    items: unique,
+    cachedAt: Date.now(),
+    cached: false,
+    warnings: errors.length ? errors : undefined,
+  });
 }

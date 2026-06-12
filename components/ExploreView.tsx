@@ -5,8 +5,11 @@ import { RefreshCw, ExternalLink, Plus, X, Search, Loader2, ChevronRight, Settin
 import type { FeedItem } from '@/app/api/feed/route';
 
 const KW_KEY   = 'jq_explore_keywords';
-const CRED_KEY = 'jq_ft_credentials';
+const CRED_KEY = 'jq_feed_credentials';
 const DEFAULT_KEYWORDS = ['ingénieur', 'alternance'];
+
+type Creds = { serpKey: string; clientId: string; clientSecret: string };
+const EMPTY_CREDS: Creds = { serpKey: '', clientId: '', clientSecret: '' };
 
 function loadKeywords(): string[] {
   try { const r = localStorage.getItem(KW_KEY); if (r) return JSON.parse(r); } catch { /* */ }
@@ -15,18 +18,26 @@ function loadKeywords(): string[] {
 function saveKeywords(kw: string[]) {
   try { localStorage.setItem(KW_KEY, JSON.stringify(kw)); } catch { /* */ }
 }
-function loadCreds(): { clientId: string; clientSecret: string } {
-  try { const r = localStorage.getItem(CRED_KEY); if (r) return JSON.parse(r); } catch { /* */ }
-  return { clientId: '', clientSecret: '' };
+function loadCreds(): Creds {
+  try {
+    const r = localStorage.getItem(CRED_KEY);
+    if (r) return { ...EMPTY_CREDS, ...JSON.parse(r) };
+    // Migration depuis l'ancien format (France Travail seul)
+    const old = localStorage.getItem('jq_ft_credentials');
+    if (old) return { ...EMPTY_CREDS, ...JSON.parse(old) };
+  } catch { /* */ }
+  return EMPTY_CREDS;
 }
-function saveCreds(c: { clientId: string; clientSecret: string }) {
+function saveCreds(c: Creds) {
   try { localStorage.setItem(CRED_KEY, JSON.stringify(c)); } catch { /* */ }
 }
 
 function formatAge(dateStr: string): string {
   if (!dateStr) return '';
+  // SerpAPI renvoie déjà du relatif ("il y a 3 jours")
+  if (/il y a|ago|aujourd|hier/i.test(dateStr)) return dateStr;
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '';
+  if (isNaN(d.getTime())) return dateStr;
   const h = Math.floor((Date.now() - d.getTime()) / 3600000);
   if (h < 1) return 'à l\'instant';
   if (h < 24) return `il y a ${h}h`;
@@ -34,56 +45,66 @@ function formatAge(dateStr: string): string {
   return days < 7 ? `il y a ${days}j` : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
+const SOURCE_STYLE: Record<string, string> = {
+  'France Travail': 'bg-blue-50 text-blue-600',
+  'Indeed':         'bg-indigo-50 text-indigo-600',
+  'LinkedIn':       'bg-sky-50 text-sky-600',
+  'Welcome to the Jungle': 'bg-emerald-50 text-emerald-600',
+  'APEC':           'bg-violet-50 text-violet-600',
+};
+
 export default function ExploreView({ onAddToKanban }: {
   onAddToKanban: (job: Partial<Record<string, string>>) => void;
 }) {
-  const [keywords, setKeywords]   = useState<string[]>(DEFAULT_KEYWORDS);
-  const [creds, setCreds]         = useState({ clientId: '', clientSecret: '' });
-  const [newKw, setNewKw]         = useState('');
-  const [editingKw, setEditingKw] = useState(false);
+  const [keywords, setKeywords]     = useState<string[]>(DEFAULT_KEYWORDS);
+  const [creds, setCreds]           = useState<Creds>(EMPTY_CREDS);
+  const [newKw, setNewKw]           = useState('');
+  const [editingKw, setEditingKw]   = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
-  const [draftCreds, setDraftCreds] = useState({ clientId: '', clientSecret: '' });
+  const [draft, setDraft]           = useState<Creds>(EMPTY_CREDS);
 
   const [items, setItems]       = useState<FeedItem[]>([]);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [cachedAt, setCachedAt] = useState<number | null>(null);
 
   useEffect(() => {
     setKeywords(loadKeywords());
     const c = loadCreds();
     setCreds(c);
-    setDraftCreds(c);
+    setDraft(c);
   }, []);
 
   const query = keywords.join(' ');
-  const hasCredentials = !!(creds.clientId && creds.clientSecret);
+  const hasCredentials = !!(creds.serpKey || (creds.clientId && creds.clientSecret));
 
   const fetchFeed = useCallback(async (force = false) => {
-    if (!query.trim() || !creds.clientId || !creds.clientSecret) return;
+    if (!query.trim() || !hasCredentials) return;
     setLoading(true);
     setError('');
+    setWarnings([]);
     try {
       const params = new URLSearchParams({
         q: query,
-        cid: creds.clientId,
-        cs: creds.clientSecret,
+        ...(creds.serpKey ? { serp: creds.serpKey } : {}),
+        ...(creds.clientId && creds.clientSecret ? { cid: creds.clientId, cs: creds.clientSecret } : {}),
         ...(force ? { force: '1' } : {}),
       });
       const res = await fetch(`/api/feed?${params}`);
       const data = await res.json();
       if (data.error === 'NO_CREDENTIALS') { setLoading(false); return; }
-      if (data.error === 'INVALID_CREDENTIALS') { setError('Identifiants France Travail invalides. Vérifiez votre Client ID et Secret.'); setLoading(false); return; }
       if (data.error) { setError(data.error); setLoading(false); return; }
       setItems(data.items ?? []);
+      setWarnings(data.warnings ?? []);
       setCachedAt(data.cachedAt ?? null);
     } catch {
       setError('Erreur réseau');
     } finally {
       setLoading(false);
     }
-  }, [query, creds]);
+  }, [query, creds, hasCredentials]);
 
   useEffect(() => { if (hasCredentials) fetchFeed(); }, [fetchFeed, hasCredentials]);
 
@@ -100,36 +121,58 @@ export default function ExploreView({ onAddToKanban }: {
     setKeywords(next);
     saveKeywords(next);
   }
-  function saveDraftCreds() {
-    setCreds(draftCreds);
-    saveCreds(draftCreds);
+  function saveDraft() {
+    setCreds(draft);
+    saveCreds(draft);
     setShowConfig(false);
     setError('');
   }
 
+  const draftValid = !!(draft.serpKey || (draft.clientId && draft.clientSecret));
+
   // ── Écran de configuration ────────────────────────────────
   if (!hasCredentials || showConfig) {
     return (
-      <div className="max-w-lg mx-auto pt-6">
+      <div className="max-w-xl mx-auto pt-6 space-y-4">
+        {/* SerpAPI / Google Jobs */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3 mb-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
+              <span className="text-xl">🔍</span>
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">Google Jobs <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full ml-1">Recommandé</span></h3>
+              <p className="text-xs text-gray-500">Agrège Indeed, LinkedIn, WTTJ, APEC… via SerpAPI — 250 recherches/mois gratuites</p>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 rounded-xl p-4 mb-4 text-sm text-amber-800 space-y-1">
+            <p className="font-semibold">Comment obtenir la clé ?</p>
+            <ol className="list-decimal list-inside space-y-0.5 text-amber-700">
+              <li>Créez un compte gratuit sur <span className="font-mono bg-amber-100 px-1 rounded">serpapi.com</span></li>
+              <li>Copiez votre <strong>API Key</strong> depuis le dashboard</li>
+            </ol>
+          </div>
+
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Clé API SerpAPI</label>
+          <input
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-gray-50 font-mono"
+            placeholder="64 caractères hexadécimaux…"
+            value={draft.serpKey}
+            onChange={e => setDraft(p => ({ ...p, serpKey: e.target.value.trim() }))}
+          />
+        </div>
+
+        {/* France Travail */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
               <span className="text-xl">🇫🇷</span>
             </div>
             <div>
-              <h3 className="font-bold text-gray-900">Connexion France Travail</h3>
-              <p className="text-xs text-gray-500">API officielle, gratuite — inscription en 5 min</p>
+              <h3 className="font-bold text-gray-900">France Travail <span className="text-xs font-medium text-gray-400 ml-1">Optionnel</span></h3>
+              <p className="text-xs text-gray-500">API officielle illimitée — compte sur francetravail.io/data/api, activez «Offres d'emploi v2»</p>
             </div>
-          </div>
-
-          <div className="bg-blue-50 rounded-xl p-4 mb-5 text-sm text-blue-800 space-y-1.5">
-            <p className="font-semibold">Comment obtenir vos clés ?</p>
-            <ol className="list-decimal list-inside space-y-1 text-blue-700">
-              <li>Allez sur <span className="font-mono bg-blue-100 px-1 rounded">francetravail.io/data/api</span></li>
-              <li>Créez un compte (email suffisant)</li>
-              <li>Créez une application → activez <strong>«Offres d'emploi v2»</strong></li>
-              <li>Copiez le <strong>Client ID</strong> et le <strong>Client Secret</strong></li>
-            </ol>
           </div>
 
           <div className="space-y-3">
@@ -137,9 +180,9 @@ export default function ExploreView({ onAddToKanban }: {
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Client ID</label>
               <input
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50 font-mono"
-                placeholder="PAR_xxxxxxxx_xxxx..."
-                value={draftCreds.clientId}
-                onChange={e => setDraftCreds(p => ({ ...p, clientId: e.target.value }))}
+                placeholder="PAR_xxxxxxxx_xxxx…"
+                value={draft.clientId}
+                onChange={e => setDraft(p => ({ ...p, clientId: e.target.value.trim() }))}
               />
             </div>
             <div>
@@ -149,39 +192,35 @@ export default function ExploreView({ onAddToKanban }: {
                   type={showSecret ? 'text' : 'password'}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 pr-10 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50 font-mono"
                   placeholder="••••••••••••••••"
-                  value={draftCreds.clientSecret}
-                  onChange={e => setDraftCreds(p => ({ ...p, clientSecret: e.target.value }))}
+                  value={draft.clientSecret}
+                  onChange={e => setDraft(p => ({ ...p, clientSecret: e.target.value.trim() }))}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowSecret(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
+                <button type="button" onClick={() => setShowSecret(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {showSecret ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
           </div>
-
-          <div className="flex gap-2 mt-5">
-            {showConfig && (
-              <button onClick={() => setShowConfig(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-                Annuler
-              </button>
-            )}
-            <button
-              onClick={saveDraftCreds}
-              disabled={!draftCreds.clientId || !draftCreds.clientSecret}
-              className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-40 transition-colors"
-            >
-              Enregistrer et lancer la recherche
-            </button>
-          </div>
-
-          <p className="text-xs text-gray-400 text-center mt-3">
-            Les clés sont stockées uniquement dans votre navigateur (localStorage).
-          </p>
         </div>
+
+        <div className="flex gap-2">
+          {showConfig && hasCredentials && (
+            <button onClick={() => setShowConfig(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 bg-white transition-colors">
+              Annuler
+            </button>
+          )}
+          <button
+            onClick={saveDraft}
+            disabled={!draftValid}
+            className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:from-violet-700 hover:to-indigo-700 disabled:opacity-40 transition-all shadow-lg shadow-violet-200"
+          >
+            Enregistrer et lancer la recherche
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-400 text-center">
+          Une seule source suffit. Les clés sont stockées uniquement dans votre navigateur (localStorage).
+        </p>
       </div>
     );
   }
@@ -208,9 +247,9 @@ export default function ExploreView({ onAddToKanban }: {
               Actualiser
             </button>
             <button
-              onClick={() => { setDraftCreds(creds); setShowConfig(true); }}
+              onClick={() => { setDraft(creds); setShowConfig(true); }}
               className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Configurer l'API"
+              title="Configurer les sources"
             >
               <Settings size={14} />
             </button>
@@ -228,7 +267,7 @@ export default function ExploreView({ onAddToKanban }: {
             <div className="flex items-center gap-1">
               <input
                 autoFocus
-                className="border border-violet-300 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 w-36"
+                className="border border-violet-300 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 w-36"
                 placeholder="Nouveau mot-clé…"
                 value={newKw}
                 onChange={e => setNewKw(e.target.value)}
@@ -248,17 +287,20 @@ export default function ExploreView({ onAddToKanban }: {
         </div>
       </div>
 
-      {/* Erreur */}
+      {/* Erreurs / warnings */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-600">⚠️ {error}</div>
       )}
+      {warnings.map(w => (
+        <div key={w} className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">⚠️ {w}</div>
+      ))}
 
       {/* Chargement */}
       {loading && items.length === 0 && (
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
             <Loader2 size={32} className="animate-spin text-violet-400 mx-auto mb-3" />
-            <p className="text-sm text-gray-400">Recherche en cours sur France Travail…</p>
+            <p className="text-sm text-gray-400">Recherche en cours…</p>
           </div>
         </div>
       )}
@@ -280,8 +322,8 @@ export default function ExploreView({ onAddToKanban }: {
                   <h4 className="font-bold text-gray-900 text-sm leading-snug group-hover:text-violet-700 transition-colors">
                     {item.title}
                   </h4>
-                  <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
-                    France Travail
+                  <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${SOURCE_STYLE[item.source] ?? 'bg-gray-100 text-gray-500'}`}>
+                    {item.source}
                   </span>
                 </div>
 
@@ -329,7 +371,7 @@ export default function ExploreView({ onAddToKanban }: {
 
       {items.length > 0 && (
         <p className="text-center text-xs text-gray-400 pb-4">
-          {items.length} offre{items.length > 1 ? 's' : ''} — source : France Travail
+          {items.length} offre{items.length > 1 ? 's' : ''} trouvée{items.length > 1 ? 's' : ''}
         </p>
       )}
     </div>
