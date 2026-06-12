@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 import { getDb } from '@/lib/db';
 import { ALL_CODES, CONTINENTS, CONTINENT_LABELS_EN, countryNameEn, countryNameFr } from '@/lib/regions';
 
@@ -22,6 +23,44 @@ export type FeedItem = {
 const cache = new Map<string, { items: FeedItem[]; at: number }>();
 const TTL = 6 * 60 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/* ── Traduction des mots-clés (fr → en + es) ────────────────── */
+
+// Cache in-process : une traduction par jeu de mots-clés, tant que le worker vit
+const translationCache = new Map<string, string>();
+
+/**
+ * Construit la requête multilingue "mots-clés fr OR en OR es" pour élargir
+ * la recherche aux annonces rédigées en anglais ou en espagnol.
+ * En cas d'échec (pas de clé API, erreur réseau), on garde le français seul.
+ */
+async function multilingualQuery(q: string): Promise<string> {
+  const key = q.toLowerCase().trim();
+  if (translationCache.has(key)) return translationCache.get(key)!;
+  if (!process.env.ANTHROPIC_API_KEY) return q;
+  try {
+    const client = new Anthropic();
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `Traduis ces mots-clés de recherche d'emploi du français vers l'anglais et l'espagnol. Utilise les termes que les recruteurs emploient réellement dans les annonces. Réponds UNIQUEMENT avec un JSON valide, sans markdown : {"en": "...", "es": "..."}
+
+Mots-clés : ${q}`,
+      }],
+    });
+    const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    const json = JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+    const variants = [...new Set([q, json.en, json.es].filter(v => typeof v === 'string' && v.trim()))];
+    const result = variants.join(' OR ');
+    translationCache.set(key, result);
+    return result;
+  } catch (e) {
+    console.error('[feed] translation error (non-blocking):', e);
+    return q;
+  }
+}
 
 /** Normalise pour comparaison : minuscules, sans accents, alphanumérique seul */
 function normKey(s: string): string {
@@ -318,20 +357,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items: applyBlocklist(cached.items, blocklist), cachedAt: cached.at, cached: true });
   }
 
+  // Requête multilingue (fr OR en OR es) pour LinkedIn et Google Jobs
+  const mq = await multilingualQuery(q);
+
   // Tag chaque résultat avec sa zone d'origine (sert de fallback pays au filtre)
   const tagged = (p: Promise<FeedItem[]>, zone: string) => p.then(items => items.map(i => ({ ...i, zone })));
 
   // LinkedIn (gratuit) : une recherche par zone, continents acceptés
   const sources: { name: string; promise: Promise<FeedItem[]> }[] = zones.map(z => ({
     name: `LinkedIn ${z}`,
-    promise: tagged(fetchLinkedIn(q, z), z),
+    promise: tagged(fetchLinkedIn(mq, z), z),
   }));
   // SerpAPI (quota 250/mois) : uniquement sur les zones pays, 3 max
   if (serpKey) {
     zones.filter(z => !CONTINENT_LABELS_EN.has(z)).slice(0, 3).forEach(z => {
-      sources.push({ name: `Google Jobs ${z}`, promise: tagged(fetchGoogleJobs(q, serpKey, z), z) });
+      sources.push({ name: `Google Jobs ${z}`, promise: tagged(fetchGoogleJobs(mq, serpKey, z), z) });
     });
   }
+  // France Travail : API française, mots-clés français uniquement
   if (useFT) sources.push({ name: 'France Travail', promise: tagged(fetchFranceTravail(q, ftCid, ftSecret), 'France') });
 
   const errors: string[] = [];
