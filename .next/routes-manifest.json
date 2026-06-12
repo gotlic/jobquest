@@ -95,6 +95,12 @@
       "namedRegex": "^/api/auth(?:/)?$"
     },
     {
+      "page": "/api/blocklist",
+      "regex": "^/api/blocklist(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/blocklist(?:/)?$"
+    },
+    {
       "page": "/api/cover-letters",
       "regex": "^/api/cover\\-letters(?:/)?$",
       "routeKeys": {},

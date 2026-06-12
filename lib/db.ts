@@ -165,6 +165,15 @@ const SCHEMA_SQL = `
     FOREIGN KEY (category_id) REFERENCES cv_categories(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS feed_blocklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('company', 'offer')),
+    value TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (kind, value)
+  );
+
   CREATE TABLE IF NOT EXISTS cover_letters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     category_id INTEGER,

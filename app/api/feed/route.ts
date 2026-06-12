@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getDb } from '@/lib/db';
 
 export type FeedItem = {
   id: string;
@@ -18,6 +19,34 @@ export type FeedItem = {
 const cache = new Map<string, { items: FeedItem[]; at: number }>();
 const TTL = 6 * 60 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Normalise pour comparaison : minuscules, sans accents, alphanumérique seul */
+function normKey(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+
+/** Charge la blocklist (entreprises et offres masquées) depuis la base */
+async function loadBlocklist(): Promise<{ companies: Set<string>; offers: Set<string> }> {
+  const companies = new Set<string>();
+  const offers = new Set<string>();
+  try {
+    const db = await getDb();
+    const rows = db.prepare('SELECT kind, value FROM feed_blocklist').all() as { kind: string; value: string }[];
+    rows.forEach(r => (r.kind === 'company' ? companies : offers).add(r.value));
+  } catch (e) {
+    console.error('[feed] blocklist load error (non-blocking):', e);
+  }
+  return { companies, offers };
+}
+
+/** Retire les offres dont l'entreprise ou l'offre elle-même est bloquée */
+function applyBlocklist(items: FeedItem[], bl: { companies: Set<string>; offers: Set<string> }): FeedItem[] {
+  if (bl.companies.size === 0 && bl.offers.size === 0) return items;
+  return items.filter(i =>
+    !bl.companies.has(normKey(i.company)) &&
+    !bl.offers.has(normKey(`${i.title} ${i.company}`))
+  );
+}
 
 /** Convertit une date relative ("il y a 3 jours") ou ISO en timestamp ms. 0 si inconnue. */
 function parsePostedTs(s: string): number {
@@ -170,10 +199,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items: [], error: 'NO_CREDENTIALS' });
   }
 
+  const blocklist = await loadBlocklist();
+
   const key = `${ftCid}|${serpKey.slice(0, 8)}|${q.toLowerCase().trim()}`;
   const cached = cache.get(key);
   if (!force && cached && Date.now() - cached.at < TTL) {
-    return NextResponse.json({ items: cached.items, cachedAt: cached.at, cached: true });
+    return NextResponse.json({ items: applyBlocklist(cached.items, blocklist), cachedAt: cached.at, cached: true });
   }
 
   const errors: string[] = [];
@@ -202,7 +233,7 @@ export async function GET(req: NextRequest) {
   // Dédupliquer par titre+entreprise normalisés (les sources se recoupent)
   const seen = new Set<string>();
   const unique = fresh.filter(i => {
-    const k = `${i.title} ${i.company}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+    const k = normKey(`${i.title} ${i.company}`);
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
@@ -215,9 +246,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items: [], error: errors.join(' · ') }, { status: 502 });
   }
 
+  // Le cache stocke la liste NON filtrée : la blocklist est appliquée à la
+  // lecture pour qu'un blocage soit effectif immédiatement, cache chaud ou non
   cache.set(key, { items: unique, at: Date.now() });
   return NextResponse.json({
-    items: unique,
+    items: applyBlocklist(unique, blocklist),
     cachedAt: Date.now(),
     cached: false,
     warnings: errors.length ? errors : undefined,

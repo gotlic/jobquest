@@ -4,6 +4,7 @@
   "/api/activities/[id]/route": "app/api/activities/[id]/route.js",
   "/api/analyze/route": "app/api/analyze/route.js",
   "/api/auth/route": "app/api/auth/route.js",
+  "/api/blocklist/route": "app/api/blocklist/route.js",
   "/api/cover-letters/[id]/route": "app/api/cover-letters/[id]/route.js",
   "/api/cover-letters/route": "app/api/cover-letters/route.js",
   "/api/cv-categories/route": "app/api/cv-categories/route.js",
