@@ -7,7 +7,8 @@ export type FeedItem = {
   location: string;
   url: string;
   summary: string;
-  pubDate: string;
+  pubDate: string;    // libellé affichable ("il y a 2 jours" ou date ISO)
+  postedTs: number;   // timestamp ms pour le tri (0 = inconnu)
   salary: string;
   contract_type: string;
   source: string;
@@ -16,6 +17,29 @@ export type FeedItem = {
 // Cache in-process par clé de recherche (6h)
 const cache = new Map<string, { items: FeedItem[]; at: number }>();
 const TTL = 6 * 60 * 60 * 1000;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Convertit une date relative ("il y a 3 jours") ou ISO en timestamp ms. 0 si inconnue. */
+function parsePostedTs(s: string): number {
+  if (!s) return 0;
+  const iso = new Date(s);
+  if (!isNaN(iso.getTime())) return iso.getTime();
+  const m = s.match(/(\d+)\s*(minute|min\b|heure|hour|jour|day|semaine|week|mois|month)/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const u = m[2].toLowerCase();
+    const ms =
+      u.startsWith('min') ? 60_000 :
+      u.startsWith('heure') || u.startsWith('hour') ? 3_600_000 :
+      u.startsWith('jour') || u.startsWith('day') ? 86_400_000 :
+      u.startsWith('semaine') || u.startsWith('week') ? 604_800_000 :
+      2_592_000_000; // mois
+    return Date.now() - n * ms;
+  }
+  if (/aujourd/i.test(s)) return Date.now();
+  if (/hier/i.test(s)) return Date.now() - 86_400_000;
+  return 0;
+}
 
 /* ── France Travail ─────────────────────────────────────────── */
 
@@ -43,7 +67,16 @@ async function getFTToken(clientId: string, clientSecret: string): Promise<strin
 
 async function fetchFranceTravail(q: string, clientId: string, clientSecret: string): Promise<FeedItem[]> {
   const token = await getFTToken(clientId, clientSecret);
-  const params = new URLSearchParams({ motsCles: q, range: '0-49', sort: '1' });
+  // minCreationDate / maxCreationDate : format yyyy-MM-dd'T'HH:mm:ss'Z'
+  const minDate = new Date(Date.now() - WEEK_MS).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const maxDate = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const params = new URLSearchParams({
+    motsCles: q,
+    range: '0-49',
+    sort: '1',
+    minCreationDate: minDate,
+    maxCreationDate: maxDate,
+  });
   const res = await fetch(`https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search?${params}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(15000),
@@ -56,6 +89,7 @@ async function fetchFranceTravail(q: string, clientId: string, clientSecret: str
     const lieu = o.lieuTravail as Record<string, unknown> | undefined;
     const entreprise = o.entreprise as Record<string, unknown> | undefined;
     const salaire = o.salaire as Record<string, unknown> | undefined;
+    const dateCreation = String(o.dateCreation ?? '');
     return {
       id: `ft-${o.id}`,
       title: String(o.intitule ?? ''),
@@ -63,7 +97,8 @@ async function fetchFranceTravail(q: string, clientId: string, clientSecret: str
       location: String(lieu?.libelle ?? ''),
       url: `https://candidat.francetravail.fr/offres/emploi/detail/${o.id}`,
       summary: String(o.description ?? '').slice(0, 300),
-      pubDate: String(o.dateCreation ?? ''),
+      pubDate: dateCreation,
+      postedTs: parsePostedTs(dateCreation),
       salary: String(salaire?.libelle ?? ''),
       contract_type: String(o.typeContratLibelle ?? ''),
       source: 'France Travail',
@@ -81,6 +116,7 @@ async function fetchGoogleJobs(q: string, apiKey: string): Promise<FeedItem[]> {
     gl: 'fr',
     hl: 'fr',
     location: 'France',
+    chips: 'date_posted:week', // uniquement les annonces de la semaine
     api_key: apiKey,
   });
   const res = await fetch(`https://serpapi.com/search.json?${params}`, {
@@ -91,7 +127,6 @@ async function fetchGoogleJobs(q: string, apiKey: string): Promise<FeedItem[]> {
     const msg = String(data.error);
     if (/invalid api key/i.test(msg)) throw new Error('SERP_AUTH');
     if (/run out of searches/i.test(msg)) throw new Error('SERP_QUOTA');
-    // "hasn't returned any results" = recherche vide, pas une erreur
     if (/returned any results/i.test(msg)) return [];
     throw new Error(`SerpAPI: ${msg.slice(0, 150)}`);
   }
@@ -103,6 +138,7 @@ async function fetchGoogleJobs(q: string, apiKey: string): Promise<FeedItem[]> {
     const link = applyOptions?.[0]?.link
       ?? String((j.related_links as { link?: string }[] | undefined)?.[0]?.link ?? '')
       ?? '';
+    const postedAt = String(ext?.posted_at ?? '');
     return {
       id: `gj-${j.job_id ?? link}`,
       title: String(j.title ?? ''),
@@ -110,7 +146,8 @@ async function fetchGoogleJobs(q: string, apiKey: string): Promise<FeedItem[]> {
       location: String(j.location ?? '').replace(/^via .*$/i, '').trim(),
       url: link || String(j.share_link ?? ''),
       summary: String(j.description ?? '').slice(0, 300),
-      pubDate: String(ext?.posted_at ?? ''), // format relatif "il y a 3 jours"
+      pubDate: postedAt,
+      postedTs: parsePostedTs(postedAt),
       salary: String(ext?.salary ?? ''),
       contract_type: String(ext?.schedule_type ?? ''),
       source: String(j.via ?? 'Google Jobs').replace(/^via\s+/i, ''),
@@ -126,7 +163,8 @@ export async function GET(req: NextRequest) {
   const force = sp.get('force') === '1';
   const ftCid    = sp.get('cid') ?? '';
   const ftSecret = sp.get('cs') ?? '';
-  const serpKey  = sp.get('serp') ?? '';
+  // Clé SerpAPI : fournie par le client OU configurée côté serveur (.env.local)
+  const serpKey  = sp.get('serp') || process.env.SERPAPI_KEY || '';
 
   if (!serpKey && (!ftCid || !ftSecret)) {
     return NextResponse.json({ items: [], error: 'NO_CREDENTIALS' });
@@ -156,16 +194,23 @@ export async function GET(req: NextRequest) {
     }
   });
 
-  // Dédupliquer par titre+entreprise normalisés (les deux sources se recoupent)
+  // Garder uniquement la semaine : date connue ET récente, ou date inconnue
+  // (Google Jobs est déjà filtré semaine côté API, on tolère ses dates manquantes)
+  const weekAgo = Date.now() - WEEK_MS;
+  const fresh = items.filter(i => i.postedTs === 0 || i.postedTs >= weekAgo);
+
+  // Dédupliquer par titre+entreprise normalisés (les sources se recoupent)
   const seen = new Set<string>();
-  const unique = items.filter(i => {
+  const unique = fresh.filter(i => {
     const k = `${i.title} ${i.company}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
 
-  // Si tout a échoué → erreur ; sinon résultats + warnings éventuels
+  // Tri : plus récent en premier, dates inconnues à la fin
+  unique.sort((a, b) => (b.postedTs || 0) - (a.postedTs || 0));
+
   if (unique.length === 0 && errors.length > 0) {
     return NextResponse.json({ items: [], error: errors.join(' · ') }, { status: 502 });
   }

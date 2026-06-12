@@ -45,6 +45,16 @@ function formatAge(dateStr: string): string {
   return days < 7 ? `il y a ${days}j` : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
+/** Badge de fraîcheur : vert < 24h, ambre < 3j, gris sinon */
+function freshnessStyle(item: FeedItem): string {
+  const ts = item.postedTs;
+  if (!ts) return 'bg-gray-100 text-gray-500';
+  const h = (Date.now() - ts) / 3600000;
+  if (h < 24) return 'bg-emerald-100 text-emerald-700';
+  if (h < 72) return 'bg-amber-100 text-amber-700';
+  return 'bg-gray-100 text-gray-600';
+}
+
 const SOURCE_STYLE: Record<string, string> = {
   'France Travail': 'bg-blue-50 text-blue-600',
   'Indeed':         'bg-indigo-50 text-indigo-600',
@@ -69,6 +79,8 @@ export default function ExploreView({ onAddToKanban }: {
   const [error, setError]       = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [cachedAt, setCachedAt] = useState<number | null>(null);
+  // null = pas encore su ; true = le serveur n'a aucune clé → écran de config
+  const [needsConfig, setNeedsConfig] = useState<boolean | null>(null);
 
   useEffect(() => {
     setKeywords(loadKeywords());
@@ -78,10 +90,9 @@ export default function ExploreView({ onAddToKanban }: {
   }, []);
 
   const query = keywords.join(' ');
-  const hasCredentials = !!(creds.serpKey || (creds.clientId && creds.clientSecret));
 
   const fetchFeed = useCallback(async (force = false) => {
-    if (!query.trim() || !hasCredentials) return;
+    if (!query.trim()) return;
     setLoading(true);
     setError('');
     setWarnings([]);
@@ -94,7 +105,8 @@ export default function ExploreView({ onAddToKanban }: {
       });
       const res = await fetch(`/api/feed?${params}`);
       const data = await res.json();
-      if (data.error === 'NO_CREDENTIALS') { setLoading(false); return; }
+      if (data.error === 'NO_CREDENTIALS') { setNeedsConfig(true); setLoading(false); return; }
+      setNeedsConfig(false);
       if (data.error) { setError(data.error); setLoading(false); return; }
       setItems(data.items ?? []);
       setWarnings(data.warnings ?? []);
@@ -104,9 +116,9 @@ export default function ExploreView({ onAddToKanban }: {
     } finally {
       setLoading(false);
     }
-  }, [query, creds, hasCredentials]);
+  }, [query, creds]);
 
-  useEffect(() => { if (hasCredentials) fetchFeed(); }, [fetchFeed, hasCredentials]);
+  useEffect(() => { fetchFeed(); }, [fetchFeed]);
 
   function addKeyword() {
     const kw = newKw.trim();
@@ -130,8 +142,8 @@ export default function ExploreView({ onAddToKanban }: {
 
   const draftValid = !!(draft.serpKey || (draft.clientId && draft.clientSecret));
 
-  // ── Écran de configuration ────────────────────────────────
-  if (!hasCredentials || showConfig) {
+  // ── Écran de configuration (uniquement si le serveur n'a aucune clé) ──
+  if (needsConfig === true || showConfig) {
     return (
       <div className="max-w-xl mx-auto pt-6 space-y-4">
         {/* SerpAPI / Google Jobs */}
@@ -204,7 +216,7 @@ export default function ExploreView({ onAddToKanban }: {
         </div>
 
         <div className="flex gap-2">
-          {showConfig && hasCredentials && (
+          {showConfig && (
             <button onClick={() => setShowConfig(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 bg-white transition-colors">
               Annuler
             </button>
@@ -322,9 +334,16 @@ export default function ExploreView({ onAddToKanban }: {
                   <h4 className="font-bold text-gray-900 text-sm leading-snug group-hover:text-violet-700 transition-colors">
                     {item.title}
                   </h4>
-                  <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${SOURCE_STYLE[item.source] ?? 'bg-gray-100 text-gray-500'}`}>
-                    {item.source}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.pubDate && (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${freshnessStyle(item)}`}>
+                        🕐 {formatAge(item.pubDate)}
+                      </span>
+                    )}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SOURCE_STYLE[item.source] ?? 'bg-gray-100 text-gray-500'}`}>
+                      {item.source}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 mb-2">
@@ -332,7 +351,6 @@ export default function ExploreView({ onAddToKanban }: {
                   {item.location && <span>📍 {item.location}</span>}
                   {item.contract_type && <span className="px-1.5 py-0.5 bg-gray-100 rounded-md">{item.contract_type}</span>}
                   {item.salary   && <span className="text-emerald-600 font-medium">💶 {item.salary}</span>}
-                  {item.pubDate  && <span>{formatAge(item.pubDate)}</span>}
                 </div>
 
                 {item.summary && (
@@ -371,7 +389,7 @@ export default function ExploreView({ onAddToKanban }: {
 
       {items.length > 0 && (
         <p className="text-center text-xs text-gray-400 pb-4">
-          {items.length} offre{items.length > 1 ? 's' : ''} trouvée{items.length > 1 ? 's' : ''}
+          {items.length} offre{items.length > 1 ? 's' : ''} de la semaine, triée{items.length > 1 ? 's' : ''} par date
         </p>
       )}
     </div>
