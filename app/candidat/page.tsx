@@ -33,6 +33,7 @@ export default function CandidatPage() {
   const [newLetterTitle, setNewLetterTitle] = useState('');
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [confirmDeleteCat, setConfirmDeleteCat] = useState<Category | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -76,6 +77,13 @@ export default function CandidatPage() {
 
   async function deleteCV(id: number) {
     await fetch(`/api/cvs/${id}`, { method: 'DELETE' });
+    await load();
+  }
+
+  async function deleteCategory(cat: Category) {
+    await fetch(`/api/cv-categories/${cat.id}`, { method: 'DELETE' });
+    setConfirmDeleteCat(null);
+    if (selectedCat === cat.id) setSelectedCat(null);
     await load();
   }
 
@@ -167,21 +175,29 @@ export default function CandidatPage() {
               const c = COLOR_CLASSES[cat.color] ?? COLOR_CLASSES.violet;
               const count = cvs.filter(cv => cv.category_id === cat.id).length;
               return (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCat(cat.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-all ${
-                    selectedCat === cat.id
-                      ? `${c.bg} ${c.border} ${c.text} shadow-sm font-semibold`
-                      : 'bg-white border-gray-100 text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="text-xl">{cat.icon}</span>
-                  <span className="flex-1 text-sm font-medium truncate">{cat.name}</span>
-                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${selectedCat === cat.id ? c.badge : 'bg-gray-100 text-gray-500'}`}>
-                    {count}
-                  </span>
-                </button>
+                <div key={cat.id} className="relative group/cat">
+                  <button
+                    onClick={() => setSelectedCat(cat.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-all ${
+                      selectedCat === cat.id
+                        ? `${c.bg} ${c.border} ${c.text} shadow-sm font-semibold`
+                        : 'bg-white border-gray-100 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-xl">{cat.icon}</span>
+                    <span className="flex-1 text-sm font-medium truncate">{cat.name}</span>
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${selectedCat === cat.id ? c.badge : 'bg-gray-100 text-gray-500'}`}>
+                      {count}
+                    </span>
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); setConfirmDeleteCat(cat); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg bg-white text-gray-300 hover:bg-red-50 hover:text-red-400 opacity-0 group-hover/cat:opacity-100 transition-all shadow-sm border border-gray-100"
+                    title="Supprimer ce profil"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               );
             })}
 
@@ -419,6 +435,41 @@ export default function CandidatPage() {
           </div>
         </div>
       </main>
+
+      {/* Confirmation suppression profil */}
+      {confirmDeleteCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                {confirmDeleteCat.icon}
+              </div>
+              <div>
+                <h3 className="font-black text-gray-900">Supprimer ce profil ?</h3>
+                <p className="text-sm text-gray-500">{confirmDeleteCat.name}</p>
+              </div>
+            </div>
+            <div className="bg-red-50 rounded-xl p-3 text-sm text-red-700">
+              <p className="font-semibold mb-1">⚠️ Action irréversible</p>
+              <p>Tous les CV de ce profil seront supprimés définitivement.</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteCat(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => deleteCategory(confirmDeleteCat)}
+                className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+              >
+                <Trash2 size={14} /> Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
