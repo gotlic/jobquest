@@ -30,19 +30,24 @@ export default function LoginPage() {
     if (!selected) return;
     setLoading(true);
     setError('');
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug: selected.slug, password }),
-    });
-    if (res.ok) {
-      router.push('/');
-      router.refresh();
-    } else {
-      const data = await res.json();
-      setError(data.error ?? 'Erreur');
-      setLoading(false);
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: selected.slug, password }),
+      });
+      if (res.ok) {
+        router.push('/');
+        router.refresh();
+        return; // ne pas appeler setLoading(false) — on quitte la page
+      }
+      let msg = `Erreur ${res.status}`;
+      try { const d = await res.json(); msg = d.error ?? msg; } catch { /* body non-JSON */ }
+      setError(msg);
+    } catch {
+      setError('Erreur réseau — réessayez');
     }
+    setLoading(false);
   }
 
   const initials = (name: string) => name.slice(0, 2).toUpperCase();
