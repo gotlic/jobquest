@@ -1,13 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Lock, Eye, EyeOff, Loader2, Plus, ChevronRight } from 'lucide-react';
+import { Lock, Eye, EyeOff, Loader2, ChevronRight } from 'lucide-react';
 
 type SpaceInfo = { id: number; name: string; slug: string };
 
 export default function LoginPage() {
-  const router = useRouter();
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
   const [selected, setSelected] = useState<SpaceInfo | null>(null);
   const [password, setPassword] = useState('');
@@ -30,22 +28,33 @@ export default function LoginPage() {
     if (!selected) return;
     setLoading(true);
     setError('');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug: selected.slug, password }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (res.ok) {
-        router.push('/');
-        router.refresh();
-        return; // ne pas appeler setLoading(false) — on quitte la page
+        // Navigation dure : évite les redirects silencieux du middleware
+        window.location.href = '/';
+        return;
       }
       let msg = `Erreur ${res.status}`;
       try { const d = await res.json(); msg = d.error ?? msg; } catch { /* body non-JSON */ }
       setError(msg);
-    } catch {
-      setError('Erreur réseau — réessayez');
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Délai dépassé (30s) — serveur lent, réessayez');
+      } else {
+        setError('Erreur réseau — réessayez');
+      }
     }
     setLoading(false);
   }
