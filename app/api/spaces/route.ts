@@ -64,6 +64,11 @@ export async function PATCH(req: NextRequest) {
 
     const updates: Record<string, unknown> = {};
 
+    if ('name' in body) {
+      const name = String(body.name ?? '').trim();
+      if (!name) return NextResponse.json({ error: 'Nom invalide' }, { status: 400 });
+      updates.name = name;
+    }
     if ('settings' in body) {
       const current = JSON.parse(space.settings || '{}');
       updates.settings = JSON.stringify({ ...current, ...body.settings });

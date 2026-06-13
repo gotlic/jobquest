@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Plus, Trash2, LogOut, Eye, EyeOff, Loader2, Key, Settings } from 'lucide-react';
+import { X, Plus, Trash2, LogOut, Eye, EyeOff, Loader2, Key, Settings, Pencil } from 'lucide-react';
 
 type SpaceInfo = { id: number; name: string; slug: string };
 type MeInfo = { id: number; name: string; slug: string; has_serpapi: boolean; has_ft: boolean; settings: Record<string, unknown> };
@@ -15,8 +15,14 @@ export default function SpaceManager({ onClose }: Props) {
   const router = useRouter();
   const [me, setMe] = useState<MeInfo | null>(null);
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
-  const [view, setView] = useState<'main' | 'create' | 'delete' | 'config'>('main');
+  const [view, setView] = useState<'main' | 'create' | 'delete' | 'config' | 'rename'>('main');
   const [deleteTarget, setDeleteTarget] = useState<SpaceInfo | null>(null);
+
+  // Renommage
+  const [renameTarget, setRenameTarget] = useState<SpaceInfo | null>(null);
+  const [renameName, setRenameName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -93,6 +99,28 @@ export default function SpaceManager({ onClose }: Props) {
     setCreating(false);
   }
 
+  async function handleRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renameTarget) return;
+    setRenaming(true);
+    setRenameError('');
+    const res = await fetch('/api/spaces', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: renameName.trim() }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      const newName = renameName.trim();
+      setSpaces(s => s.map(x => x.id === renameTarget.id ? { ...x, name: newName } : x));
+      setMe(m => m && m.id === renameTarget.id ? { ...m, name: newName } : m);
+      setView('main');
+    } else {
+      setRenameError(data.error ?? 'Erreur');
+    }
+    setRenaming(false);
+  }
+
   async function handleSaveConfig(e: React.FormEvent) {
     e.preventDefault();
     setSavingConfig(true);
@@ -133,6 +161,7 @@ export default function SpaceManager({ onClose }: Props) {
             {view === 'create' && 'Créer un espace'}
             {view === 'delete' && `Supprimer "${deleteTarget?.name}"`}
             {view === 'config' && 'Configuration API'}
+            {view === 'rename' && `Renommer "${renameTarget?.name}"`}
           </h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
             <X size={18} />
@@ -153,9 +182,16 @@ export default function SpaceManager({ onClose }: Props) {
                     <p className="font-bold text-gray-900">{me.name}</p>
                     <p className="text-xs text-gray-400">Espace actif</p>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
                     {me.has_serpapi && <span title="SerpAPI configuré" className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">SerpAPI ✓</span>}
                     {me.has_ft && <span title="France Travail configuré" className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">FT ✓</span>}
+                    <button
+                      onClick={() => { setRenameTarget(me as SpaceInfo); setRenameName(me.name); setRenameError(''); setView('rename'); }}
+                      className="p-1.5 rounded-lg hover:bg-violet-100 text-gray-300 hover:text-violet-500 transition-colors"
+                      title="Renommer"
+                    >
+                      <Pencil size={14} />
+                    </button>
                   </div>
                 </div>
               )}
@@ -304,6 +340,35 @@ export default function SpaceManager({ onClose }: Props) {
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Renommage */}
+          {view === 'rename' && renameTarget && (
+            <form onSubmit={handleRename} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Nouveau nom</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
+                  value={renameName}
+                  onChange={e => setRenameName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {renameError && <p className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2">⚠️ {renameError}</p>}
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setView('main')} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={renaming || !renameName.trim() || renameName.trim() === renameTarget.name}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {renaming ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />} Renommer
+                </button>
+              </div>
+            </form>
           )}
 
           {/* Config API */}
