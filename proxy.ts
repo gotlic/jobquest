@@ -46,7 +46,7 @@ export async function proxy(req: NextRequest) {
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/auth') ||
-    pathname === '/api/spaces'
+    (pathname === '/api/spaces' && req.method === 'GET')
   ) {
     return NextResponse.next();
   }
