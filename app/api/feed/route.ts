@@ -69,18 +69,18 @@ function normKey(s: string): string {
 
 type Blocklist = { companies: Set<string>; offers: Set<string>; kanbanKeys: Set<string>; kanbanUrls: Set<string> };
 
-/** Charge la blocklist + les offres déjà dans le Kanban depuis la base */
-async function loadBlocklist(): Promise<Blocklist> {
+/** Charge la blocklist + les offres déjà dans le Kanban depuis la base (filtrées par espace) */
+async function loadBlocklist(spaceId: number): Promise<Blocklist> {
   const companies = new Set<string>();
   const offers = new Set<string>();
   const kanbanKeys = new Set<string>();
   const kanbanUrls = new Set<string>();
   try {
     const db = await getDb();
-    const rows = db.prepare('SELECT kind, value FROM feed_blocklist').all() as { kind: string; value: string }[];
+    const rows = db.prepare('SELECT kind, value FROM feed_blocklist WHERE space_id = ?').all(spaceId) as { kind: string; value: string }[];
     rows.forEach(r => (r.kind === 'company' ? companies : offers).add(r.value));
     // Les offres déjà ajoutées au Kanban ne doivent plus être proposées
-    const jobs = db.prepare('SELECT title, company, url FROM jobs').all() as { title: string; company: string; url: string | null }[];
+    const jobs = db.prepare('SELECT title, company, url FROM jobs WHERE space_id = ?').all(spaceId) as { title: string; company: string; url: string | null }[];
     jobs.forEach(j => {
       kanbanKeys.add(normKey(`${j.title} ${j.company}`));
       if (j.url) kanbanUrls.add(j.url.split('?')[0].toLowerCase().replace(/\/$/, ''));
@@ -306,7 +306,7 @@ async function fetchGoogleJobs(q: string, apiKey: string, location: string): Pro
     if (/returned any results/i.test(msg)) return [];
     throw new Error(`SerpAPI: ${msg.slice(0, 150)}`);
   }
-  const jobs: Record<string, unknown>[] = data.jobs_results ?? [];
+  const jobs = (data.jobs_results as Record<string, unknown>[] | undefined) ?? [];
 
   return jobs.map(j => {
     const ext = j.detected_extensions as Record<string, unknown> | undefined;
@@ -341,17 +341,29 @@ export async function GET(req: NextRequest) {
   const zones = (sp.get('zones') ?? 'France').split(',').map(z => z.trim()).filter(Boolean).slice(0, 8);
   // Pays sélectionnés (codes ISO) — filtre appliqué aux résultats ; vide = pas de filtre
   const sel   = new Set((sp.get('sel') ?? '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean));
-  const ftCid    = sp.get('cid') ?? '';
-  const ftSecret = sp.get('cs') ?? '';
-  // Clé SerpAPI : fournie par le client OU configurée côté serveur (.env.local)
-  const serpKey  = sp.get('serp') || process.env.SERPAPI_KEY || '';
+
+  // Clés API depuis l'espace de l'utilisateur (DB) ou fallback env
+  const sid = parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
+  let serpKey = process.env.SERPAPI_KEY || '';
+  let ftCid = '';
+  let ftSecret = '';
+  try {
+    const db = await getDb();
+    const space = db.prepare('SELECT serpapi_key, ft_client_id, ft_client_secret FROM spaces WHERE id = ?').get(sid) as { serpapi_key: string; ft_client_id: string; ft_client_secret: string } | undefined;
+    if (space) {
+      if (space.serpapi_key) serpKey = space.serpapi_key;
+      ftCid = space.ft_client_id || '';
+      ftSecret = space.ft_client_secret || '';
+    }
+  } catch { /* fallback env */ }
+
   // France Travail n'a de sens que si la France est dans la sélection
   const franceSelected = sel.size === 0 ? zones.some(z => /france/i.test(z)) : sel.has('FR');
   const useFT = !!(ftCid && ftSecret) && franceSelected;
 
-  const blocklist = await loadBlocklist();
+  const blocklist = await loadBlocklist(sid);
 
-  const key = `${ftCid}|${serpKey.slice(0, 8)}|${zones.join('+').toLowerCase()}|${[...sel].sort().join('')}|${q.toLowerCase().trim()}`;
+  const key = `${sid}|${serpKey.slice(0, 8)}|${zones.join('+').toLowerCase()}|${[...sel].sort().join('')}|${q.toLowerCase().trim()}`;
   const cached = cache.get(key);
   if (!force && cached && Date.now() - cached.at < TTL) {
     return NextResponse.json({ items: applyBlocklist(cached.items, blocklist), cachedAt: cached.at, cached: true });

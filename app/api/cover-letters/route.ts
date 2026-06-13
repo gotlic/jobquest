@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
+function spaceId(req: NextRequest): number {
+  return parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
+}
+
 const DEFAULT_LETTERS = [
   {
     title: 'Lettre type — Amélioration Continue',
@@ -52,28 +56,26 @@ Cordialement,
   },
 ];
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = await getDb();
-  const count = (db.prepare('SELECT COUNT(*) as c FROM cover_letters').get() as { c: number }).c;
+  const sid = spaceId(req);
+  const count = (db.prepare('SELECT COUNT(*) as c FROM cover_letters WHERE space_id = ?').get(sid) as { c: number }).c;
   if (count === 0) {
-    const insert = db.prepare('INSERT INTO cover_letters (title, content, category_id) VALUES (@title, @content, @category_id)');
-    DEFAULT_LETTERS.forEach(l => insert.run(l));
+    DEFAULT_LETTERS.forEach(l => {
+      db.prepare('INSERT INTO cover_letters (space_id, title, content, category_id) VALUES (?, ?, ?, ?)').run(sid, l.title, l.content, l.category_id);
+    });
   }
-  const letters = db.prepare('SELECT * FROM cover_letters ORDER BY id').all();
+  const letters = db.prepare('SELECT * FROM cover_letters WHERE space_id = ? ORDER BY id').all(sid);
   return NextResponse.json(letters);
 }
 
 export async function POST(req: NextRequest) {
   const db = await getDb();
   const body = await req.json();
+  const sid = spaceId(req);
   const result = db.prepare(`
-    INSERT INTO cover_letters (title, content, category_id, is_default)
-    VALUES (@title, @content, @category_id, @is_default)
-  `).run({
-    title: body.title,
-    content: body.content ?? '',
-    category_id: body.category_id ?? null,
-    is_default: body.is_default ? 1 : 0,
-  });
+    INSERT INTO cover_letters (space_id, title, content, category_id, is_default)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(sid, body.title, body.content ?? '', body.category_id ?? null, body.is_default ? 1 : 0);
   return NextResponse.json(db.prepare('SELECT * FROM cover_letters WHERE id = ?').get(result.lastInsertRowid), { status: 201 });
 }

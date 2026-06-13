@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
+function spaceId(req: NextRequest): number {
+  return parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
+}
+
 const DEFAULT_CATEGORIES = [
   { name: 'Amélioration Continue', color: 'blue', icon: '⚙️' },
   { name: 'Industrie', color: 'orange', icon: '🏭' },
@@ -10,25 +14,31 @@ const DEFAULT_CATEGORIES = [
   { name: 'Qualité', color: 'red', icon: '✅' },
 ];
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = await getDb();
+  const sid = spaceId(req);
 
-  // Seed default categories if empty
-  const count = (db.prepare('SELECT COUNT(*) as c FROM cv_categories').get() as { c: number }).c;
+  // Seed default categories for this space if empty
+  const count = (db.prepare('SELECT COUNT(*) as c FROM cv_categories WHERE space_id = ?').get(sid) as { c: number }).c;
   if (count === 0) {
-    const insert = db.prepare('INSERT INTO cv_categories (name, color, icon) VALUES (@name, @color, @icon)');
-    DEFAULT_CATEGORIES.forEach(c => insert.run(c));
+    const insert = db.prepare('INSERT INTO cv_categories (space_id, name, color, icon) VALUES (?, @name, @color, @icon)');
+    DEFAULT_CATEGORIES.forEach(c => {
+      db.prepare('INSERT INTO cv_categories (space_id, name, color, icon) VALUES (?, ?, ?, ?)').run(sid, c.name, c.color, c.icon);
+    });
+    // Suppress unused variable warning
+    void insert;
   }
 
-  const categories = db.prepare('SELECT * FROM cv_categories ORDER BY id').all();
+  const categories = db.prepare('SELECT * FROM cv_categories WHERE space_id = ? ORDER BY id').all(sid);
   return NextResponse.json(categories);
 }
 
 export async function POST(req: NextRequest) {
   const db = await getDb();
   const body = await req.json();
+  const sid = spaceId(req);
   const result = db.prepare(
-    'INSERT INTO cv_categories (name, color, icon) VALUES (@name, @color, @icon)'
-  ).run({ name: body.name, color: body.color ?? 'violet', icon: body.icon ?? '📄' });
+    'INSERT INTO cv_categories (space_id, name, color, icon) VALUES (?, ?, ?, ?)'
+  ).run(sid, body.name, body.color ?? 'violet', body.icon ?? '📄');
   return NextResponse.json(db.prepare('SELECT * FROM cv_categories WHERE id = ?').get(result.lastInsertRowid), { status: 201 });
 }

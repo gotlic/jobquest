@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+function spaceId(req: NextRequest): number {
+  return parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const db = await getDb();
-    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ? AND space_id = ?').get(id, spaceId(req));
     if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const activities = db.prepare('SELECT * FROM activities WHERE job_id = ? ORDER BY created_at ASC').all(id);
     return NextResponse.json({ ...job as object, activities });
@@ -20,8 +24,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const db = await getDb();
   const body = await req.json();
+  const sid = spaceId(req);
 
-  const existing = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  const existing = db.prepare('SELECT * FROM jobs WHERE id = ? AND space_id = ?').get(id, sid) as Record<string, unknown> | undefined;
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Colonnes réelles de la table jobs (whitelist pour éviter les champs parasites)
@@ -38,7 +43,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .join(', ');
 
   if (fields) {
-    db.prepare(`UPDATE jobs SET ${fields} WHERE id = @id`).run({ ...body, id });
+    db.prepare(`UPDATE jobs SET ${fields} WHERE id = @id AND space_id = @space_id`).run({ ...body, id, space_id: sid });
   }
 
   // Log status changes
@@ -74,11 +79,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const db = await getDb();
-    db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
+    db.prepare('DELETE FROM jobs WHERE id = ? AND space_id = ?').run(id, spaceId(req));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[DELETE /api/jobs/[id]] error:', e);

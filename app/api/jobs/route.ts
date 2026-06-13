@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-export async function GET() {
+function spaceId(req: NextRequest): number {
+  return parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
+}
+
+export async function GET(req: NextRequest) {
   try {
     const db = await getDb();
-    const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC').all();
+    const sid = spaceId(req);
+    const jobs = db.prepare('SELECT * FROM jobs WHERE space_id = ? ORDER BY created_at DESC').all(sid);
     return NextResponse.json(jobs);
   } catch (e) {
     console.error('[GET /api/jobs] error:', e);
@@ -16,17 +21,19 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const db = await getDb();
+    const sid = spaceId(req);
 
     const stmt = db.prepare(`
-      INSERT INTO jobs (url, title, company, location, remote, start_date, salary, contract_type,
+      INSERT INTO jobs (space_id, url, title, company, location, remote, start_date, salary, contract_type,
         summary, description, contact_name, contact_email, contact_linkedin,
         network_connection, status, added_by, priority, tags)
-      VALUES (@url, @title, @company, @location, @remote, @start_date, @salary, @contract_type,
+      VALUES (@space_id, @url, @title, @company, @location, @remote, @start_date, @salary, @contract_type,
         @summary, @description, @contact_name, @contact_email, @contact_linkedin,
         @network_connection, @status, @added_by, @priority, @tags)
     `);
 
     const result = stmt.run({
+      space_id: sid,
       url: body.url ?? null,
       title: body.title ?? '',
       company: body.company ?? '',

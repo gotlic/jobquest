@@ -389,7 +389,8 @@ export default function JobDetailModal({
       {/* Edit modal */}
       {showEdit && (
         <AddJobModal
-          editJob={{ ...job, id: job.id }}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          editJob={job as any}
           onClose={() => setShowEdit(false)}
           onUpdate={async (id, data) => {
             await fetch(`/api/jobs/${id}`, {

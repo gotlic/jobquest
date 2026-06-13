@@ -1,20 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AUTH_COOKIE, AUTH_TOKEN } from '@/lib/auth';
+import { SPACE_COOKIE, validateSpaceToken } from '@/lib/auth';
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Toujours autoriser login et API auth
-  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth')) {
+  // Routes publiques : login, API auth, liste publique des espaces
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/api/auth') ||
+    pathname === '/api/spaces'
+  ) {
     return NextResponse.next();
   }
 
-  const token = req.cookies.get(AUTH_COOKIE)?.value;
-  if (token !== AUTH_TOKEN) {
+  const token = req.cookies.get(SPACE_COOKIE)?.value;
+  const spaceId = token ? validateSpaceToken(token) : null;
+
+  if (!spaceId) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  return NextResponse.next();
+  // Injecte le spaceId dans les headers pour les API routes
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-space-id', String(spaceId));
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

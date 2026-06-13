@@ -6,6 +6,7 @@ export async function POST(req: NextRequest) {
   try {
     const db = await getDb();
     const body = await req.json();
+    const sid = parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
 
     const candidate: JobLike = {
       title: body.title ?? '',
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
       url: body.url,
     };
 
-    const existing = db.prepare('SELECT * FROM jobs WHERE status != ?').all('archived');
+    const existing = db.prepare('SELECT * FROM jobs WHERE status != ? AND space_id = ?').all('archived', sid);
     const safeExisting = existing.map(j => ({
       title: (j.title as string) ?? '',
       company: (j.company as string) ?? '',

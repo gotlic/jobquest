@@ -14,6 +14,8 @@
   "/api/jobs/[id]/route": "/api/jobs/[id]",
   "/api/jobs/check-duplicate/route": "/api/jobs/check-duplicate",
   "/api/jobs/route": "/api/jobs",
+  "/api/me/route": "/api/me",
+  "/api/spaces/route": "/api/spaces",
   "/api/uploads/[filename]/route": "/api/uploads/[filename]",
   "/candidat/page": "/candidat",
   "/icon.svg/route": "/icon.svg",

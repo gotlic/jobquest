@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import { Plus, LayoutGrid, BarChart3, Search, RefreshCw, User, Telescope } from 'lucide-react';
+import { Plus, LayoutGrid, BarChart3, Search, RefreshCw, User, Telescope, UserCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Job, Activity } from '@/lib/db';
+import SpaceManager from '@/components/SpaceManager';
 import JobCard from '@/components/JobCard';
 import AddJobModal from '@/components/AddJobModal';
 import JobDetailModal from '@/components/JobDetailModal';
@@ -37,6 +38,8 @@ export default function Home() {
   const [exploreJob, setExploreJob] = useState<Record<string, string> | null>(null);
   const [exploreRefresh, setExploreRefresh] = useState(0);
   const [search, setSearch] = useState('');
+  const [showSpaceManager, setShowSpaceManager] = useState(false);
+  const [spaceName, setSpaceName] = useState<string | null>(null);
 
   const loadJobs = useCallback(async () => {
     try {
@@ -50,6 +53,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
+
+  useEffect(() => {
+    fetch('/api/me').then(r => r.json()).then(d => { if (d?.name) setSpaceName(d.name); }).catch(() => {});
+  }, []);
 
   async function handleAddJob(jobData: Record<string, unknown>) {
     try {
@@ -150,6 +157,13 @@ export default function Home() {
                 <Telescope size={14} /> Explorer
               </button>
             </div>
+            <button
+              onClick={() => setShowSpaceManager(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
+            >
+              <UserCircle size={14} />
+              {spaceName ?? 'Compte'}
+            </button>
             <Link
               href="/candidat"
               className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
@@ -376,6 +390,8 @@ export default function Home() {
       {showAdd && (
         <AddJobModal onClose={() => setShowAdd(false)} onSave={handleAddJob} />
       )}
+
+      {showSpaceManager && <SpaceManager onClose={() => setShowSpaceManager(false)} />}
 
       {selectedJob && (
         <JobDetailModal

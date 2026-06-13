@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-/** Normalise pour comparaison : minuscules, sans accents, alphanumérique seul */
+function spaceId(req: NextRequest): number {
+  return parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
+}
+
 function normKey(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const db = await getDb();
-    const rows = db.prepare('SELECT * FROM feed_blocklist ORDER BY created_at DESC').all();
+    const rows = db.prepare('SELECT * FROM feed_blocklist WHERE space_id = ? ORDER BY created_at DESC').all(spaceId(req));
     return NextResponse.json(rows);
   } catch (e) {
     console.error('[blocklist GET]', e);
@@ -28,8 +31,9 @@ export async function POST(req: NextRequest) {
     const value = normKey(String(body?.value ?? label));
     if (!value) return NextResponse.json({ error: 'Valeur vide' }, { status: 400 });
 
+    const sid = spaceId(req);
     const db = await getDb();
-    db.prepare('INSERT OR IGNORE INTO feed_blocklist (kind, value, label) VALUES (?, ?, ?)').run(kind, value, label);
+    db.prepare('INSERT OR IGNORE INTO feed_blocklist (space_id, kind, value, label) VALUES (?, ?, ?, ?)').run(sid, kind, value, label);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[blocklist POST]', e);
@@ -43,7 +47,7 @@ export async function DELETE(req: NextRequest) {
     const id = body?.id;
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
     const db = await getDb();
-    db.prepare('DELETE FROM feed_blocklist WHERE id = ?').run(id);
+    db.prepare('DELETE FROM feed_blocklist WHERE id = ? AND space_id = ?').run(id, spaceId(req));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[blocklist DELETE]', e);

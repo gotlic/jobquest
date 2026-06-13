@@ -14,6 +14,8 @@
   "/api/jobs/[id]/route": "app/api/jobs/[id]/route.js",
   "/api/jobs/check-duplicate/route": "app/api/jobs/check-duplicate/route.js",
   "/api/jobs/route": "app/api/jobs/route.js",
+  "/api/me/route": "app/api/me/route.js",
+  "/api/spaces/route": "app/api/spaces/route.js",
   "/api/uploads/[filename]/route": "app/api/uploads/[filename]/route.js",
   "/candidat/page": "app/candidat/page.js",
   "/icon.svg/route": "app/icon.svg/route.js",

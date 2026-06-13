@@ -1,33 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, ExternalLink, Plus, X, Search, Loader2, ChevronRight, Settings, Eye, EyeOff, Ban, MapPin, Check } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { RefreshCw, ExternalLink, Plus, X, Search, Loader2, ChevronRight, Eye, EyeOff, Ban, MapPin, Check } from 'lucide-react';
 import type { FeedItem } from '@/app/api/feed/route';
 import { CONTINENTS, countryNameFr, countryNameEn } from '@/lib/regions';
 
-const KW_KEY      = 'jq_explore_keywords';
-const COUNTRY_KEY = 'jq_explore_countries';
-const CRED_KEY    = 'jq_feed_credentials';
+const KW_KEY_LS      = 'jq_explore_keywords';
+const COUNTRY_KEY_LS = 'jq_explore_countries';
 const DEFAULT_KEYWORDS = ['ingénieur', 'alternance'];
 const DEFAULT_COUNTRIES = ['FR'];
-
-type Creds = { serpKey: string; clientId: string; clientSecret: string };
-const EMPTY_CREDS: Creds = { serpKey: '', clientId: '', clientSecret: '' };
-
-function loadKeywords(): string[] {
-  try { const r = localStorage.getItem(KW_KEY); if (r) return JSON.parse(r); } catch { /* */ }
-  return DEFAULT_KEYWORDS;
-}
-function saveKeywords(kw: string[]) {
-  try { localStorage.setItem(KW_KEY, JSON.stringify(kw)); } catch { /* */ }
-}
-function loadCountries(): string[] {
-  try { const r = localStorage.getItem(COUNTRY_KEY); if (r) { const a = JSON.parse(r); if (Array.isArray(a) && a.length) return a; } } catch { /* */ }
-  return DEFAULT_COUNTRIES;
-}
-function saveCountries(codes: string[]) {
-  try { localStorage.setItem(COUNTRY_KEY, JSON.stringify(codes)); } catch { /* */ }
-}
 
 /** Zones envoyées à l'API : continent entier (ou quasi) → label continent, sinon pays un à un */
 function computeZones(sel: Set<string>): string[] {
@@ -55,28 +36,13 @@ function zoneSummary(sel: Set<string>): string {
   }
   return parts.join(' · ') || 'Choisir une zone…';
 }
-function loadCreds(): Creds {
-  try {
-    const r = localStorage.getItem(CRED_KEY);
-    if (r) return { ...EMPTY_CREDS, ...JSON.parse(r) };
-    // Migration depuis l'ancien format (France Travail seul)
-    const old = localStorage.getItem('jq_ft_credentials');
-    if (old) return { ...EMPTY_CREDS, ...JSON.parse(old) };
-  } catch { /* */ }
-  return EMPTY_CREDS;
-}
-function saveCreds(c: Creds) {
-  try { localStorage.setItem(CRED_KEY, JSON.stringify(c)); } catch { /* */ }
-}
 
-/** Normalisation identique au serveur (clé stable titre+entreprise / entreprise) */
 function normKey(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 }
 
 function formatAge(dateStr: string): string {
   if (!dateStr) return '';
-  // SerpAPI renvoie déjà du relatif ("il y a 3 jours")
   if (/il y a|ago|aujourd|hier/i.test(dateStr)) return dateStr;
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
@@ -87,7 +53,6 @@ function formatAge(dateStr: string): string {
   return days < 7 ? `il y a ${days}j` : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
-/** Badge de fraîcheur : vert < 24h, ambre < 3j, gris sinon */
 function freshnessStyle(item: FeedItem): string {
   const ts = item.postedTs;
   if (!ts) return 'bg-gray-100 text-gray-500';
@@ -99,8 +64,8 @@ function freshnessStyle(item: FeedItem): string {
 
 const SOURCE_STYLE: Record<string, string> = {
   'France Travail': 'bg-blue-50 text-blue-600',
-  'Indeed':         'bg-indigo-50 text-indigo-600',
   'LinkedIn':       'bg-sky-50 text-sky-600',
+  'Indeed':         'bg-indigo-50 text-indigo-600',
   'Welcome to the Jungle': 'bg-emerald-50 text-emerald-600',
   'APEC':           'bg-violet-50 text-violet-600',
 };
@@ -113,42 +78,70 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
   const [countries, setCountries]   = useState<string[]>(DEFAULT_COUNTRIES);
   const [showZones, setShowZones]   = useState(false);
   const [zoneDraft, setZoneDraft]   = useState<Set<string>>(new Set(DEFAULT_COUNTRIES));
-  const [creds, setCreds]           = useState<Creds>(EMPTY_CREDS);
   const [newKw, setNewKw]           = useState('');
   const [editingKw, setEditingKw]   = useState(false);
-  const [showConfig, setShowConfig] = useState(false);
-  const [showSecret, setShowSecret] = useState(false);
-  const [draft, setDraft]           = useState<Creds>(EMPTY_CREDS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [items, setItems]       = useState<FeedItem[]>([]);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [cachedAt, setCachedAt] = useState<number | null>(null);
-  // null = pas encore su ; true = le serveur n'a aucune clé → écran de config
-  const [needsConfig, setNeedsConfig] = useState<boolean | null>(null);
-  // Masquage local immédiat en attendant le prochain fetch (la vraie source est la DB serveur)
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  // Entreprise en attente de confirmation de blocage
   const [blockCompany, setBlockCompany] = useState<FeedItem | null>(null);
 
+  // Sauvegarde debounced vers le serveur
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function scheduleSave(kw: string[], co: string[]) {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fetch('/api/spaces', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { keywords: kw, countries: co } }),
+      }).catch(() => {});
+    }, 1500);
+  }
+
+  // Chargement initial depuis l'API (settings de l'espace), avec fallback localStorage
   useEffect(() => {
-    setKeywords(loadKeywords());
-    setCountries(loadCountries());
-    const c = loadCreds();
-    setCreds(c);
-    setDraft(c);
+    fetch('/api/me')
+      .then(r => r.json())
+      .then(me => {
+        const s = me?.settings ?? {};
+        const kw = Array.isArray(s.keywords) && s.keywords.length ? s.keywords : (() => {
+          try { const r = localStorage.getItem(KW_KEY_LS); if (r) return JSON.parse(r); } catch { /* */ }
+          return DEFAULT_KEYWORDS;
+        })();
+        const co = Array.isArray(s.countries) && s.countries.length ? s.countries : (() => {
+          try { const r = localStorage.getItem(COUNTRY_KEY_LS); if (r) { const a = JSON.parse(r); if (Array.isArray(a) && a.length) return a; } } catch { /* */ }
+          return DEFAULT_COUNTRIES;
+        })();
+        setKeywords(kw);
+        setCountries(co);
+        setZoneDraft(new Set(co));
+        setSettingsLoaded(true);
+      })
+      .catch(() => {
+        // Fallback localStorage
+        try {
+          const kw = localStorage.getItem(KW_KEY_LS);
+          if (kw) setKeywords(JSON.parse(kw));
+          const co = localStorage.getItem(COUNTRY_KEY_LS);
+          if (co) { const a = JSON.parse(co); if (Array.isArray(a) && a.length) { setCountries(a); setZoneDraft(new Set(a)); } }
+        } catch { /* */ }
+        setSettingsLoaded(true);
+      });
   }, []);
 
   function commitZones() {
     const codes = [...zoneDraft];
-    if (codes.length === 0) return; // au moins un pays
+    if (codes.length === 0) return;
     setCountries(codes);
-    saveCountries(codes);
     setShowZones(false);
+    scheduleSave(keywords, codes);
   }
 
-  /** Bloque une offre précise (pas de confirmation) */
   async function ignoreOffer(item: FeedItem) {
     setHidden(prev => new Set(prev).add(`offer:${normKey(`${item.title} ${item.company}`)}`));
     try {
@@ -157,10 +150,9 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'offer', value: `${item.title} ${item.company}`, label: `${item.title} — ${item.company}` }),
       });
-    } catch { /* le masquage local reste effectif pour cette session */ }
+    } catch { /* masquage local reste effectif */ }
   }
 
-  /** Bloque toutes les offres d'une entreprise (après confirmation) */
   async function confirmBlockCompany() {
     if (!blockCompany) return;
     const company = blockCompany.company;
@@ -172,13 +164,13 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'company', value: company, label: company }),
       });
-    } catch { /* le masquage local reste effectif pour cette session */ }
+    } catch { /* masquage local reste effectif */ }
   }
 
   const query = keywords.join(' ');
 
   const fetchFeed = useCallback(async (force = false) => {
-    if (!query.trim()) return;
+    if (!query.trim() || !settingsLoaded) return;
     setLoading(true);
     setError('');
     setWarnings([]);
@@ -188,14 +180,10 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         q: query,
         zones: computeZones(selSet).join(','),
         sel: countries.join(','),
-        ...(creds.serpKey ? { serp: creds.serpKey } : {}),
-        ...(creds.clientId && creds.clientSecret ? { cid: creds.clientId, cs: creds.clientSecret } : {}),
         ...(force ? { force: '1' } : {}),
       });
       const res = await fetch(`/api/feed?${params}`);
       const data = await res.json();
-      if (data.error === 'NO_CREDENTIALS') { setNeedsConfig(true); setLoading(false); return; }
-      setNeedsConfig(false);
       if (data.error) { setError(data.error); setLoading(false); return; }
       setItems(data.items ?? []);
       setWarnings(data.warnings ?? []);
@@ -205,10 +193,8 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
     } finally {
       setLoading(false);
     }
-  }, [query, countries, creds]);
+  }, [query, countries, settingsLoaded]);
 
-  // refreshSignal : incrémenté par le parent après un ajout au Kanban →
-  // refetch (le serveur exclut désormais l'offre ajoutée)
   useEffect(() => { fetchFeed(); }, [fetchFeed, refreshSignal]);
 
   function addKeyword() {
@@ -216,123 +202,21 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
     if (!kw || keywords.includes(kw)) { setNewKw(''); return; }
     const next = [...keywords, kw];
     setKeywords(next);
-    saveKeywords(next);
+    scheduleSave(next, countries);
     setNewKw('');
   }
+
   function removeKeyword(kw: string) {
     const next = keywords.filter(k => k !== kw);
     setKeywords(next);
-    saveKeywords(next);
-  }
-  function saveDraft() {
-    setCreds(draft);
-    saveCreds(draft);
-    setShowConfig(false);
-    setError('');
+    scheduleSave(next, countries);
   }
 
-  const draftValid = !!(draft.serpKey || (draft.clientId && draft.clientSecret));
   const visible = items.filter(i =>
     !hidden.has(`offer:${normKey(`${i.title} ${i.company}`)}`) &&
     !hidden.has(`company:${normKey(i.company)}`)
   );
 
-  // ── Écran de configuration (uniquement si le serveur n'a aucune clé) ──
-  if (needsConfig === true || showConfig) {
-    return (
-      <div className="max-w-xl mx-auto pt-6 space-y-4">
-        {/* SerpAPI / Google Jobs */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
-              <span className="text-xl">🔍</span>
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">Google Jobs <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full ml-1">Recommandé</span></h3>
-              <p className="text-xs text-gray-500">Agrège Indeed, LinkedIn, WTTJ, APEC… via SerpAPI — 250 recherches/mois gratuites</p>
-            </div>
-          </div>
-
-          <div className="bg-amber-50 rounded-xl p-4 mb-4 text-sm text-amber-800 space-y-1">
-            <p className="font-semibold">Comment obtenir la clé ?</p>
-            <ol className="list-decimal list-inside space-y-0.5 text-amber-700">
-              <li>Créez un compte gratuit sur <span className="font-mono bg-amber-100 px-1 rounded">serpapi.com</span></li>
-              <li>Copiez votre <strong>API Key</strong> depuis le dashboard</li>
-            </ol>
-          </div>
-
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Clé API SerpAPI</label>
-          <input
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-gray-50 font-mono"
-            placeholder="64 caractères hexadécimaux…"
-            value={draft.serpKey}
-            onChange={e => setDraft(p => ({ ...p, serpKey: e.target.value.trim() }))}
-          />
-        </div>
-
-        {/* France Travail */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
-              <span className="text-xl">🇫🇷</span>
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">France Travail <span className="text-xs font-medium text-gray-400 ml-1">Optionnel</span></h3>
-              <p className="text-xs text-gray-500">API officielle illimitée — compte sur francetravail.io/data/api, activez «Offres d'emploi v2»</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Client ID</label>
-              <input
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50 font-mono"
-                placeholder="PAR_xxxxxxxx_xxxx…"
-                value={draft.clientId}
-                onChange={e => setDraft(p => ({ ...p, clientId: e.target.value.trim() }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Client Secret</label>
-              <div className="relative">
-                <input
-                  type={showSecret ? 'text' : 'password'}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 pr-10 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50 font-mono"
-                  placeholder="••••••••••••••••"
-                  value={draft.clientSecret}
-                  onChange={e => setDraft(p => ({ ...p, clientSecret: e.target.value.trim() }))}
-                />
-                <button type="button" onClick={() => setShowSecret(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showSecret ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          {showConfig && (
-            <button onClick={() => setShowConfig(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 bg-white transition-colors">
-              Annuler
-            </button>
-          )}
-          <button
-            onClick={saveDraft}
-            disabled={!draftValid}
-            className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-sm font-bold hover:from-violet-700 hover:to-indigo-700 disabled:opacity-40 transition-all shadow-lg shadow-violet-200"
-          >
-            Enregistrer et lancer la recherche
-          </button>
-        </div>
-
-        <p className="text-xs text-gray-400 text-center">
-          Une seule source suffit. Les clés sont stockées uniquement dans votre navigateur (localStorage).
-        </p>
-      </div>
-    );
-  }
-
-  // ── Vue principale ────────────────────────────────────────
   return (
     <div className="space-y-5">
       {/* Header mots-clés */}
@@ -345,7 +229,6 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
             <button
               onClick={() => { setZoneDraft(new Set(countries)); setShowZones(true); }}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:border-violet-300 hover:text-violet-700 bg-gray-50 transition-colors max-w-sm"
-              title="Choisir les pays / continents de recherche"
             >
               <MapPin size={14} className="text-violet-500 shrink-0" />
               <span className="truncate">{zoneSummary(new Set(countries))}</span>
@@ -362,13 +245,6 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
             >
               {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
               Actualiser
-            </button>
-            <button
-              onClick={() => { setDraft(creds); setShowConfig(true); }}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Configurer les sources"
-            >
-              <Settings size={14} />
             </button>
           </div>
         </div>
@@ -404,7 +280,6 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         </div>
       </div>
 
-      {/* Erreurs / warnings */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-600">⚠️ {error}</div>
       )}
@@ -412,7 +287,6 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         <div key={w} className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">⚠️ {w}</div>
       ))}
 
-      {/* Chargement */}
       {loading && items.length === 0 && (
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
@@ -422,7 +296,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         </div>
       )}
 
-      {!loading && !error && visible.length === 0 && (
+      {!loading && !error && visible.length === 0 && settingsLoaded && (
         <div className="text-center py-16 text-gray-400">
           <p className="text-3xl mb-2">🔍</p>
           <p className="text-sm">
@@ -431,7 +305,6 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         </div>
       )}
 
-      {/* Liste */}
       <div className="space-y-3">
         {visible.map(item => (
           <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:border-violet-200 hover:shadow-md transition-all group">
@@ -479,7 +352,6 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
                 <button
                   onClick={() => setBlockCompany(item)}
                   className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-500 rounded-xl text-xs font-semibold hover:bg-red-50 transition-colors"
-                  title={`Ne plus proposer les offres de ${item.company}`}
                 >
                   <Ban size={13} /> Bloquer l'entreprise
                 </button>
@@ -487,7 +359,6 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
               <button
                 onClick={() => ignoreOffer(item)}
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-500 rounded-xl text-xs font-semibold hover:bg-gray-50 hover:text-gray-700 transition-colors"
-                title="Ne plus proposer cette offre"
               >
                 <EyeOff size={13} /> Ignorer
               </button>
@@ -517,7 +388,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         </p>
       )}
 
-      {/* Modal : où chercher (continents / pays) */}
+      {/* Modal : où chercher */}
       {showZones && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
@@ -605,7 +476,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         </div>
       )}
 
-      {/* Modal de confirmation : blocage entreprise */}
+      {/* Modal confirmation blocage entreprise */}
       {blockCompany && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
@@ -616,10 +487,10 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
               <h3 className="font-bold text-gray-900">Bloquer cette entreprise ?</h3>
             </div>
             <p className="text-sm text-gray-600 mb-2">
-              Plus aucune offre de <strong className="text-gray-900">{blockCompany.company}</strong> ne sera proposée dans l'onglet Explorer.
+              Plus aucune offre de <strong className="text-gray-900">{blockCompany.company}</strong> ne sera proposée dans votre Explorer.
             </p>
             <p className="text-xs text-gray-400 mb-5">
-              Ce blocage s'applique à toute l'équipe. Vous pourrez le retirer plus tard si besoin.
+              Ce blocage est propre à votre espace. Vous pourrez le retirer plus tard si besoin.
             </p>
             <div className="flex gap-3">
               <button
