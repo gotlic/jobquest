@@ -243,6 +243,14 @@ function runMigrations(sqlDb: SqlJsDatabase) {
     result[0]?.values.forEach(row => applied.add(row[0] as string));
   } catch {}
 
+  // ── Récupération d'une migration feed_blocklist partiellement exécutée ────
+  // Si feed_blocklist a été DROP mais feed_blocklist_new pas encore renommée
+  const fbExists = tableExists(sqlDb, 'feed_blocklist');
+  const fbnExists = tableExists(sqlDb, 'feed_blocklist_new');
+  if (!fbExists && fbnExists) {
+    try { sqlDb.exec('ALTER TABLE feed_blocklist_new RENAME TO feed_blocklist'); } catch {}
+  }
+
   // ── Migration spaces_v1 ──────────────────────────────────────────────────
   if (!applied.has('spaces_v1')) {
     // Create spaces table if needed
@@ -268,22 +276,25 @@ function runMigrations(sqlDb: SqlJsDatabase) {
     }
 
     // Recreate feed_blocklist with space_id + new UNIQUE constraint
+    // Exécuter statement par statement (sql.js ne garantit pas les multi-statements)
     if (tableExists(sqlDb, 'feed_blocklist') && !hasColumn(sqlDb, 'feed_blocklist', 'space_id')) {
-      sqlDb.exec(`
-        CREATE TABLE feed_blocklist_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          space_id INTEGER NOT NULL DEFAULT 1,
-          kind TEXT NOT NULL CHECK (kind IN ('company', 'offer')),
-          value TEXT NOT NULL,
-          label TEXT NOT NULL DEFAULT '',
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          UNIQUE (space_id, kind, value)
-        );
-        INSERT OR IGNORE INTO feed_blocklist_new (space_id, kind, value, label, created_at)
-          SELECT 1, kind, value, label, created_at FROM feed_blocklist;
-        DROP TABLE feed_blocklist;
-        ALTER TABLE feed_blocklist_new RENAME TO feed_blocklist;
-      `);
+      // Nettoyer un éventuel résidu d'une migration précédente
+      if (tableExists(sqlDb, 'feed_blocklist_new')) {
+        sqlDb.exec('DROP TABLE feed_blocklist_new');
+      }
+      sqlDb.exec(`CREATE TABLE feed_blocklist_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        space_id INTEGER NOT NULL DEFAULT 1,
+        kind TEXT NOT NULL CHECK (kind IN ('company', 'offer')),
+        value TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (space_id, kind, value)
+      )`);
+      sqlDb.exec(`INSERT OR IGNORE INTO feed_blocklist_new (space_id, kind, value, label, created_at)
+        SELECT 1, kind, value, label, created_at FROM feed_blocklist`);
+      sqlDb.exec('DROP TABLE feed_blocklist');
+      sqlDb.exec('ALTER TABLE feed_blocklist_new RENAME TO feed_blocklist');
     }
 
     // Seed initial spaces
