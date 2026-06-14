@@ -341,6 +341,7 @@ export async function GET(req: NextRequest) {
   const zones = (sp.get('zones') ?? 'France').split(',').map(z => z.trim()).filter(Boolean).slice(0, 8);
   // Pays sélectionnés (codes ISO) — filtre appliqué aux résultats ; vide = pas de filtre
   const sel   = new Set((sp.get('sel') ?? '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean));
+  const withLinkedin = sp.get('linkedin') !== '0';
 
   // Clés API depuis l'espace de l'utilisateur (DB) ou fallback env
   const sid = parseInt(req.headers.get('x-space-id') ?? '1', 10) || 1;
@@ -363,7 +364,7 @@ export async function GET(req: NextRequest) {
 
   const blocklist = await loadBlocklist(sid);
 
-  const key = `${sid}|${serpKey.slice(0, 8)}|${zones.join('+').toLowerCase()}|${[...sel].sort().join('')}|${q.toLowerCase().trim()}`;
+  const key = `${sid}|${serpKey.slice(0, 8)}|${zones.join('+').toLowerCase()}|${[...sel].sort().join('')}|${q.toLowerCase().trim()}|li${withLinkedin ? 1 : 0}`;
   const cached = cache.get(key);
   if (!force && cached && Date.now() - cached.at < TTL) {
     return NextResponse.json({ items: applyBlocklist(cached.items, blocklist), cachedAt: cached.at, cached: true });
@@ -376,10 +377,9 @@ export async function GET(req: NextRequest) {
   const tagged = (p: Promise<FeedItem[]>, zone: string) => p.then(items => items.map(i => ({ ...i, zone })));
 
   // LinkedIn (gratuit) : une recherche par zone, continents acceptés
-  const sources: { name: string; promise: Promise<FeedItem[]> }[] = zones.map(z => ({
-    name: `LinkedIn ${z}`,
-    promise: tagged(fetchLinkedIn(mq, z), z),
-  }));
+  const sources: { name: string; promise: Promise<FeedItem[]> }[] = withLinkedin
+    ? zones.map(z => ({ name: `LinkedIn ${z}`, promise: tagged(fetchLinkedIn(mq, z), z) }))
+    : [];
   // SerpAPI (quota 250/mois) : uniquement sur les zones pays, 3 max
   if (serpKey) {
     zones.filter(z => !CONTINENT_LABELS_EN.has(z)).slice(0, 3).forEach(z => {

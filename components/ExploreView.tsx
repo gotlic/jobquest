@@ -81,6 +81,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
   const [newKw, setNewKw]           = useState('');
   const [editingKw, setEditingKw]   = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [includeLinkedin, setIncludeLinkedin] = useState(true);
 
   const [items, setItems]       = useState<FeedItem[]>([]);
   const [loading, setLoading]   = useState(false);
@@ -92,13 +93,14 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
 
   // Sauvegarde debounced vers le serveur
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function scheduleSave(kw: string[], co: string[]) {
+  function scheduleSave(kw: string[], co: string[], li?: boolean) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    const linkedin = li ?? includeLinkedin;
     saveTimer.current = setTimeout(() => {
       fetch('/api/spaces', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: { keywords: kw, countries: co } }),
+        body: JSON.stringify({ settings: { keywords: kw, countries: co, linkedin } }),
       }).catch(() => {});
     }, 1500);
   }
@@ -120,6 +122,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         setKeywords(kw);
         setCountries(co);
         setZoneDraft(new Set(co));
+        if (s.linkedin === false) setIncludeLinkedin(false);
         setSettingsLoaded(true);
       })
       .catch(() => {
@@ -180,6 +183,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
         q: query,
         zones: computeZones(selSet).join(','),
         sel: countries.join(','),
+        linkedin: includeLinkedin ? '1' : '0',
         ...(force ? { force: '1' } : {}),
       });
       const res = await fetch(`/api/feed?${params}`);
@@ -193,7 +197,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
     } finally {
       setLoading(false);
     }
-  }, [query, countries, settingsLoaded]);
+  }, [query, countries, settingsLoaded, includeLinkedin]);
 
   useEffect(() => { fetchFeed(); }, [fetchFeed, refreshSignal]);
 
@@ -277,6 +281,23 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
               <Plus size={13} /> Ajouter
             </button>
           )}
+        </div>
+
+        {/* Option LinkedIn */}
+        <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
+          <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-500 hover:text-gray-700">
+            <input
+              type="checkbox"
+              checked={includeLinkedin}
+              onChange={e => {
+                const val = e.target.checked;
+                setIncludeLinkedin(val);
+                scheduleSave(keywords, countries, val);
+              }}
+              className="w-4 h-4 rounded accent-violet-600 cursor-pointer"
+            />
+            Inclure LinkedIn dans les recherches
+          </label>
         </div>
       </div>
 
