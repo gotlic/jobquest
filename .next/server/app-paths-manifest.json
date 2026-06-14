@@ -7,6 +7,7 @@
   "/api/blocklist/route": "app/api/blocklist/route.js",
   "/api/cover-letters/[id]/route": "app/api/cover-letters/[id]/route.js",
   "/api/cover-letters/route": "app/api/cover-letters/route.js",
+  "/api/cv-categories/[id]/route": "app/api/cv-categories/[id]/route.js",
   "/api/cv-categories/route": "app/api/cv-categories/route.js",
   "/api/cvs/[id]/route": "app/api/cvs/[id]/route.js",
   "/api/cvs/route": "app/api/cvs/route.js",

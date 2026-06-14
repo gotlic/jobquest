@@ -1,0 +1,3 @@
+{
+  "/api/cv-categories/[id]/route": "app/api/cv-categories/[id]/route.js"
+}

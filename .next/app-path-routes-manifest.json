@@ -7,6 +7,7 @@
   "/api/blocklist/route": "/api/blocklist",
   "/api/cover-letters/[id]/route": "/api/cover-letters/[id]",
   "/api/cover-letters/route": "/api/cover-letters",
+  "/api/cv-categories/[id]/route": "/api/cv-categories/[id]",
   "/api/cv-categories/route": "/api/cv-categories",
   "/api/cvs/[id]/route": "/api/cvs/[id]",
   "/api/cvs/route": "/api/cvs",

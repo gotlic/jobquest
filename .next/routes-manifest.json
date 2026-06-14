@@ -39,6 +39,14 @@
       "namedRegex": "^/api/cover\\-letters/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/api/cv-categories/[id]",
+      "regex": "^/api/cv\\-categories/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/cv\\-categories/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/api/cvs/[id]",
       "regex": "^/api/cvs/([^/]+?)(?:/)?$",
       "routeKeys": {
