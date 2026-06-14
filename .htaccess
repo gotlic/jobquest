@@ -1,1 +1,7 @@
 # JobQuest
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerNodejs /home/liga1281/nodevenv/jobquest/22/bin/node
+PassengerAppRoot /home/liga1281/jobquest
+PassengerAppType node
+PassengerStartupFile server.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
