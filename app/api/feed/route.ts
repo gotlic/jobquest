@@ -271,46 +271,6 @@ async function fetchLinkedIn(q: string, location: string): Promise<FeedItem[]> {
   }).filter(i => i.title && i.url);
 }
 
-/* ── Indeed RSS (gratuit, sans clé API) ────────────────────── */
-
-async function fetchIndeed(q: string, location: string): Promise<FeedItem[]> {
-  const params = new URLSearchParams({ q, l: location, sort: 'date', limit: '50' });
-  const res = await fetch(`https://fr.indeed.com/rss?${params}`, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobQuest/1.0)' },
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!res.ok) throw new Error(`Indeed RSS ${res.status}`);
-  const xml = await res.text();
-
-  const items: FeedItem[] = [];
-  const entries = xml.split('<item>').slice(1);
-  for (const entry of entries) {
-    const pick = (tag: string) => entry.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></${tag}>`))?.[1]?.trim()
-      ?? entry.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`))?.[1]?.trim() ?? '';
-    const title   = pick('title');
-    const url     = pick('link') || pick('guid');
-    const pubDate = pick('pubDate');
-    const desc    = pick('description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
-    const company = pick('source') || pick('author');
-    const loc     = entry.match(/<location>([^<]+)<\/location>/)?.[1] ?? location;
-    if (!title || !url) continue;
-    items.push({
-      id: `ind-${url}`,
-      title,
-      company,
-      location: loc,
-      url: url.split('?')[0],
-      summary: desc,
-      pubDate,
-      postedTs: parsePostedTs(pubDate),
-      salary: '',
-      contract_type: '',
-      source: 'Indeed',
-    });
-  }
-  return items;
-}
-
 /* ── SerpAPI / Google Jobs ──────────────────────────────────── */
 
 async function fetchGoogleJobs(q: string, apiKey: string, location: string): Promise<FeedItem[]> {
@@ -420,14 +380,13 @@ export async function GET(req: NextRequest) {
   const sources: { name: string; promise: Promise<FeedItem[]> }[] = withLinkedin
     ? zones.map(z => ({ name: `LinkedIn ${z}`, promise: tagged(fetchLinkedIn(mq, z), z) }))
     : [];
-  // Indeed RSS (gratuit, sans clé) : zones pays uniquement
-  zones.filter(z => !CONTINENT_LABELS_EN.has(z)).forEach(z => {
-    sources.push({ name: `Indeed ${z}`, promise: tagged(fetchIndeed(q, z), z) });
-  });
   // SerpAPI (quota 250/mois) : uniquement sur les zones pays, 3 max
+  // Pour la France, on utilise la requête française brute (pas multilingue) car
+  // "alternance" est un terme spécifique français que Google Jobs comprend tel quel
   if (serpKey) {
     zones.filter(z => !CONTINENT_LABELS_EN.has(z)).slice(0, 3).forEach(z => {
-      sources.push({ name: `Google Jobs ${z}`, promise: tagged(fetchGoogleJobs(mq, serpKey, z), z) });
+      const searchQ = /^france$/i.test(z) ? q : mq;
+      sources.push({ name: `Google Jobs ${z}`, promise: tagged(fetchGoogleJobs(searchQ, serpKey, z), z) });
     });
   }
   // France Travail : API française, mots-clés français uniquement
