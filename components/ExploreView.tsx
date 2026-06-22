@@ -384,15 +384,18 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
                 <EyeOff size={13} /> Ignorer
               </button>
               <button
-                onClick={() => onAddToKanban({
-                  url:           item.url,
-                  title:         item.title,
-                  company:       item.company,
-                  location:      item.location,
-                  salary:        item.salary,
-                  contract_type: item.contract_type,
-                  summary:       item.summary,
-                })}
+                onClick={() => {
+                  setHidden(prev => new Set(prev).add(`offer:${normKey(`${item.title} ${item.company}`)}`));
+                  onAddToKanban({
+                    url:           item.url,
+                    title:         item.title,
+                    company:       item.company,
+                    location:      item.location,
+                    salary:        item.salary,
+                    contract_type: item.contract_type,
+                    summary:       item.summary,
+                  });
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white rounded-xl text-xs font-semibold hover:bg-violet-700 transition-colors"
               >
                 <ChevronRight size={13} /> Ajouter au Kanban
