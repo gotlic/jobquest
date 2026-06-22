@@ -37,6 +37,8 @@ export default function Home() {
   const [view, setView] = useState<'kanban' | 'stats' | 'explore'>('kanban');
   const [exploreJob, setExploreJob] = useState<Record<string, string> | null>(null);
   const [exploreRefresh, setExploreRefresh] = useState(0);
+  const [kanbanSaveSignal, setKanbanSaveSignal] = useState(0);
+  const [kanbanCancelSignal, setKanbanCancelSignal] = useState(0);
   const [search, setSearch] = useState('');
   const [showSpaceManager, setShowSpaceManager] = useState(false);
   const [spaceName, setSpaceName] = useState<string | null>(null);
@@ -358,6 +360,8 @@ export default function Home() {
           <ExploreView
             onAddToKanban={(job) => setExploreJob(job as Record<string, string>)}
             refreshSignal={exploreRefresh}
+            kanbanSaveSignal={kanbanSaveSignal}
+            kanbanCancelSignal={kanbanCancelSignal}
           />
         )}
       </main>
@@ -381,8 +385,8 @@ export default function Home() {
 
       {exploreJob && (
         <AddJobModal
-          onClose={() => setExploreJob(null)}
-          onSave={async (job) => { await handleAddJob(job); setExploreJob(null); setExploreRefresh(n => n + 1); }}
+          onClose={() => { setExploreJob(null); setKanbanCancelSignal(n => n + 1); }}
+          onSave={async (job) => { await handleAddJob(job); setExploreJob(null); setKanbanSaveSignal(n => n + 1); setExploreRefresh(n => n + 1); }}
           editJob={exploreJob as Parameters<typeof AddJobModal>[0]['editJob']}
         />
       )}

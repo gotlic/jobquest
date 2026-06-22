@@ -70,9 +70,11 @@ const SOURCE_STYLE: Record<string, string> = {
   'APEC':           'bg-violet-50 text-violet-600',
 };
 
-export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
+export default function ExploreView({ onAddToKanban, refreshSignal = 0, kanbanSaveSignal = 0, kanbanCancelSignal = 0 }: {
   onAddToKanban: (job: Partial<Record<string, string>>) => void;
   refreshSignal?: number;
+  kanbanSaveSignal?: number;
+  kanbanCancelSignal?: number;
 }) {
   const [keywords, setKeywords]     = useState<string[]>(DEFAULT_KEYWORDS);
   const [countries, setCountries]   = useState<string[]>(DEFAULT_COUNTRIES);
@@ -90,6 +92,27 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
   const [cachedAt, setCachedAt] = useState<number | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [blockCompany, setBlockCompany] = useState<FeedItem | null>(null);
+  const [pendingKanbanItem, setPendingKanbanItem] = useState<FeedItem | null>(null);
+  const [confirmHideItem, setConfirmHideItem] = useState<FeedItem | null>(null);
+
+  // Signaux Kanban depuis le parent
+  const prevSaveSignal = useRef(0);
+  const prevCancelSignal = useRef(0);
+  useEffect(() => {
+    if (kanbanSaveSignal > prevSaveSignal.current && pendingKanbanItem) {
+      setHidden(prev => new Set(prev).add(`offer:${normKey(`${pendingKanbanItem.title} ${pendingKanbanItem.company}`)}`));
+      setPendingKanbanItem(null);
+    }
+    prevSaveSignal.current = kanbanSaveSignal;
+  }, [kanbanSaveSignal, pendingKanbanItem]);
+
+  useEffect(() => {
+    if (kanbanCancelSignal > prevCancelSignal.current && pendingKanbanItem) {
+      setConfirmHideItem(pendingKanbanItem);
+      setPendingKanbanItem(null);
+    }
+    prevCancelSignal.current = kanbanCancelSignal;
+  }, [kanbanCancelSignal, pendingKanbanItem]);
 
   // Sauvegarde debounced vers le serveur
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -385,7 +408,7 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
               </button>
               <button
                 onClick={() => {
-                  setHidden(prev => new Set(prev).add(`offer:${normKey(`${item.title} ${item.company}`)}`));
+                  setPendingKanbanItem(item);
                   onAddToKanban({
                     url:           item.url,
                     title:         item.title,
@@ -495,6 +518,36 @@ export default function ExploreView({ onAddToKanban, refreshSignal = 0 }: {
                   Valider
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal : supprimer l'offre des résultats après annulation Kanban */}
+      {confirmHideItem && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="font-bold text-gray-900 mb-2">Supprimer cette offre des résultats ?</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              <strong className="text-gray-900">{confirmHideItem.title}</strong>
+              {confirmHideItem.company && <> — {confirmHideItem.company}</>}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmHideItem(null)}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Non
+              </button>
+              <button
+                onClick={() => {
+                  setHidden(prev => new Set(prev).add(`offer:${normKey(`${confirmHideItem.title} ${confirmHideItem.company}`)}`));
+                  setConfirmHideItem(null);
+                }}
+                className="flex-1 py-2.5 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 transition-colors"
+              >
+                Oui, supprimer
+              </button>
             </div>
           </div>
         </div>
