@@ -15,6 +15,7 @@ type JobWithActivities = Job & { activities: Activity[] };
 
 const COLUMNS = [
   { key: 'todo', emoji: '📋', label: 'À explorer', color: 'from-gray-100 to-gray-50', dot: 'bg-gray-400', count_color: 'text-gray-500' },
+  { key: 'ready', emoji: '✉️', label: 'À postuler', color: 'from-blue-100 to-blue-50', dot: 'bg-blue-400', count_color: 'text-blue-600' },
   { key: 'applied', emoji: '🚀', label: 'Postulé', color: 'from-violet-100 to-violet-50', dot: 'bg-violet-500', count_color: 'text-violet-600' },
   { key: 'followup', emoji: '📣', label: 'Relancé', color: 'from-pink-100 to-pink-50', dot: 'bg-pink-400', count_color: 'text-pink-600' },
   { key: 'interview', emoji: '🤝', label: 'Entretien', color: 'from-amber-100 to-amber-50', dot: 'bg-amber-400', count_color: 'text-amber-600' },
@@ -23,8 +24,8 @@ const COLUMNS = [
 ];
 
 const STAT_CARDS = [
-  { label: 'Total offres', emoji: '📊', keys: ['todo', 'applied', 'interview', 'offer', 'rejected', 'archived'], color: 'from-violet-500 to-indigo-600' },
-  { label: 'En cours', emoji: '⚡', keys: ['todo', 'applied', 'interview'], color: 'from-amber-400 to-orange-500' },
+  { label: 'Total offres', emoji: '📊', keys: ['todo', 'ready', 'applied', 'interview', 'offer', 'rejected', 'archived'], color: 'from-violet-500 to-indigo-600' },
+  { label: 'En cours', emoji: '⚡', keys: ['todo', 'ready', 'applied', 'interview'], color: 'from-amber-400 to-orange-500' },
   { label: 'Entretiens', emoji: '🤝', keys: ['interview'], color: 'from-blue-500 to-cyan-500' },
   { label: 'Offres reçues', emoji: '🎉', keys: ['offer'], color: 'from-emerald-400 to-teal-500' },
 ];
