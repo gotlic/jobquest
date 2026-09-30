@@ -278,7 +278,7 @@ async function fetchGoogleJobs(q: string, apiKey: string, location: string): Pro
 
   async function call(params: URLSearchParams): Promise<Record<string, unknown>> {
     const res = await fetch(`https://serpapi.com/search.json?${params}`, {
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(28000),
     });
     return res.json();
   }
@@ -393,7 +393,10 @@ export async function GET(req: NextRequest) {
   if (useFT) sources.push({ name: 'France Travail', promise: tagged(fetchFranceTravail(q, ftCid, ftSecret), 'France') });
 
   const errors: string[] = [];
-  const results = await Promise.allSettled(sources.map(s => s.promise));
+  // Timeout global : chaque source a 30s max avant d'être ignorée
+  const withTimeout = (p: Promise<FeedItem[]>, name: string) =>
+    Promise.race([p, new Promise<FeedItem[]>((_, reject) => setTimeout(() => reject(new Error(`${name} : délai dépassé`)), 30000))]);
+  const results = await Promise.allSettled(sources.map(s => withTimeout(s.promise, s.name)));
 
   const items: FeedItem[] = [];
   results.forEach((r, idx) => {
